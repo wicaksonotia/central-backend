@@ -86,7 +86,6 @@ return [
 
         'pgsql' => [
             'driver' => 'pgsql',
-            'url' => env('DB_URL'),
             'host' => env('DB_HOST', '127.0.0.1'),
             'port' => env('DB_PORT', '5432'),
             'database' => env('DB_DATABASE', 'laravel'),
@@ -101,12 +100,25 @@ return [
 
         'kasira' => [
             'driver' => 'pgsql',
-            'url' => env('DB_KASIRA_URL'),
             'host' => env('DB_KASIRA_HOST'),
             'port' => env('DB_KASIRA_PORT', '5432'),
             'database' => env('DB_KASIRA_DATABASE'),
             'username' => env('DB_KASIRA_USERNAME'),
             'password' => env('DB_KASIRA_PASSWORD'),
+            'charset' => 'utf8',
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'search_path' => 'public',
+            'sslmode' => 'prefer',
+        ],
+        
+        'pengaduan' => [
+            'driver' => 'pgsql',
+            'host' => env('DB_PENGAADUAN_HOST'),
+            'port' => env('DB_PENGAADUAN_PORT', '5432'),
+            'database' => env('DB_PENGAADUAN_DATABASE'),
+            'username' => env('DB_PENGAADUAN_USERNAME'),
+            'password' => env('DB_PENGAADUAN_PASSWORD'),
             'charset' => 'utf8',
             'prefix' => '',
             'prefix_indexes' => true,

@@ -4,12 +4,14 @@ namespace App\Http\Controllers\Api\V1\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Complaint;
+use App\Models\ComplaintCategory;
 use App\Models\ComplaintStatusHistory;
 use App\Models\Unit;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 class AdminComplaintController extends Controller
@@ -202,6 +204,56 @@ class AdminComplaintController extends Controller
             'status' => 'success',
             'message' => 'Pengaduan ditolak. Masyarakat harus membuat pengaduan baru jika ingin melaporkannya kembali.',
             'data' => $complaint,
+        ]);
+    }
+
+
+    public function setCategory(Request $request, int $id)
+    {
+        $complaint = Complaint::find($id);
+
+        if (!$complaint) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Pengaduan tidak ditemukan.',
+            ], 404);
+        }
+
+        if ($complaint->status !== 'diajukan') {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Kategori hanya dapat ditentukan saat pengaduan masih diajukan.',
+            ], 422);
+        }
+
+        $categoryModel = new ComplaintCategory();
+
+        $validated = $request->validate([
+            'category_id' => [
+                'required',
+                'integer',
+                Rule::exists(
+                    $categoryModel->getConnectionName() . '.' .
+                        $categoryModel->getTable(),
+                    'id'
+                ),
+            ],
+        ]);
+
+        $complaint->category_id = $validated['category_id'];
+        $complaint->save();
+
+        $complaint->load('category');
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Kategori pengaduan berhasil ditentukan.',
+            'data' => [
+                'id' => $complaint->id,
+                'nomor_pengaduan' => $complaint->nomor_pengaduan,
+                'category_id' => $complaint->category_id,
+                'category' => $complaint->category,
+            ],
         ]);
     }
 }

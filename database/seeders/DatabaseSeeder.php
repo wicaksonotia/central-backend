@@ -18,6 +18,7 @@ class DatabaseSeeder extends Seeder
         $this->call([
             RoleSeeder::class,
             MainAdminSeeder::class,
+            ComplaintCategorySeeder::class,
         ]);
     }
 }

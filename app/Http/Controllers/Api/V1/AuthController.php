@@ -80,86 +80,86 @@ class AuthController extends Controller
      * Verifikasi OTP.
      */
     public function verifyOtp(Request $request): JsonResponse
-{
-    $validated = $request->validate([
-        'phone' => [
-            'required',
-            'string',
-            'max:20',
-        ],
-        'otp' => [
-            'required',
-            'digits:6',
-        ],
-    ]);
-
-    $phone = $this->normalizePhone($validated['phone']);
-
-    $otpRecord = PhoneOtp::where('phone', $phone)
-        ->whereNull('verified_at')
-        ->latest('id')
-        ->first();
-
-    if (!$otpRecord) {
-        return response()->json([
-            'status' => false,
-            'message' => 'OTP tidak ditemukan. Silakan minta OTP baru.',
-        ], 422);
-    }
-
-    if ($otpRecord->expires_at->isPast()) {
-        return response()->json([
-            'status' => false,
-            'message' => 'OTP sudah kedaluwarsa. Silakan minta OTP baru.',
-        ], 422);
-    }
-
-    if ($otpRecord->attempts >= 5) {
-        return response()->json([
-            'status' => false,
-            'message' => 'Batas percobaan OTP sudah habis. Silakan minta OTP baru.',
-        ], 422);
-    }
-
-    $otpRecord->increment('attempts');
-
-    if (!Hash::check($validated['otp'], $otpRecord->otp_hash)) {
-        return response()->json([
-            'status' => false,
-            'message' => 'OTP tidak valid.',
-        ], 422);
-    }
-
-    $otpRecord->update([
-        'verified_at' => now(),
-    ]);
-
-    $user = User::where('phone', $phone)->first();
-
-    if (!$user) {
-        $user = User::create([
-            'name' => 'Pengguna',
-            'phone' => $phone,
-            'phone_verified_at' => now(),
+    {
+        $validated = $request->validate([
+            'phone' => [
+                'required',
+                'string',
+                'max:20',
+            ],
+            'otp' => [
+                'required',
+                'digits:6',
+            ],
         ]);
-    } else {
-        $user->update([
-            'phone_verified_at' => now(),
+
+        $phone = $this->normalizePhone($validated['phone']);
+
+        $otpRecord = PhoneOtp::where('phone', $phone)
+            ->whereNull('verified_at')
+            ->latest('id')
+            ->first();
+
+        if (!$otpRecord) {
+            return response()->json([
+                'status' => false,
+                'message' => 'OTP tidak ditemukan. Silakan minta OTP baru.',
+            ], 422);
+        }
+
+        if ($otpRecord->expires_at->isPast()) {
+            return response()->json([
+                'status' => false,
+                'message' => 'OTP sudah kedaluwarsa. Silakan minta OTP baru.',
+            ], 422);
+        }
+
+        if ($otpRecord->attempts >= 5) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Batas percobaan OTP sudah habis. Silakan minta OTP baru.',
+            ], 422);
+        }
+
+        $otpRecord->increment('attempts');
+
+        if (!Hash::check($validated['otp'], $otpRecord->otp_hash)) {
+            return response()->json([
+                'status' => false,
+                'message' => 'OTP tidak valid.',
+            ], 422);
+        }
+
+        $otpRecord->update([
+            'verified_at' => now(),
+        ]);
+
+        $user = User::where('phone', $phone)->first();
+
+        if (!$user) {
+            $user = User::create([
+                'name' => 'Pengguna',
+                'phone' => $phone,
+                'phone_verified_at' => now(),
+            ]);
+        } else {
+            $user->update([
+                'phone_verified_at' => now(),
+            ]);
+        }
+
+        $token = $user->createToken('flutter-app')->plainTextToken;
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Login berhasil.',
+            'data' => [
+                'user' => $user,
+                'token' => $token,
+                'profile_completed' => $user->profile_completed_at !== null,
+            ],
         ]);
     }
-
-    $token = $user->createToken('flutter-app')->plainTextToken;
-
-    return response()->json([
-        'status' => true,
-        'message' => 'Login berhasil.',
-        'data' => [
-            'user' => $user,
-            'token' => $token,
-            'profile_completed' => $user->profile_completed_at !== null,
-        ],
-    ]);
-}
 
     /**
      * Normalisasi nomor HP Indonesia.
@@ -179,53 +179,75 @@ class AuthController extends Controller
         return $phone;
     }
 
+
     public function me(Request $request)
-{
-    return response()->json([
-        'status' => true,
-        'message' => 'Data pengguna berhasil diambil.',
-        'data' => [
-            'user' => $request->user(),
-        ],
-    ]);
-}
+    {
+        $user = $request->user()->load([
+            'roles' => function ($query) {
+                $query->select('roles.id', 'roles.nama', 'roles.kode');
+            },
+        ]);
 
-public function updateProfile(Request $request)
-{
-    $user = $request->user();
+        return response()->json([
+            'status' => true,
+            'message' => 'Data pengguna berhasil diambil.',
+            'data' => [
+                'user' => [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'phone' => $user->phone,
+                    'avatar' => $user->avatar,
+                    'profile_completed_at' => $user->profile_completed_at,
+                    'roles' => $user->roles->map(function ($role) {
+                        return [
+                            'id' => $role->id,
+                            'nama' => $role->nama,
+                            'kode' => $role->kode,
+                            'unit_id' => $role->pivot->unit_id,
+                        ];
+                    })->values(),
+                ],
+            ],
+        ]);
+    }
 
-    $validated = $request->validate([
-        'name' => ['required', 'string', 'max:100'],
-        'email' => [
-            'nullable',
-            'email',
-            'max:255',
-            'unique:users,email,' . $user->id,
-        ],
-    ]);
+    public function updateProfile(Request $request)
+    {
+        $user = $request->user();
 
-    $user->update([
-        'name' => $validated['name'],
-        'email' => $validated['email'] ?? null,
-        'profile_completed_at' => now(),
-    ]);
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:100'],
+            'email' => [
+                'nullable',
+                'email',
+                'max:255',
+                'unique:users,email,' . $user->id,
+            ],
+        ]);
 
-    return response()->json([
-        'status' => true,
-        'message' => 'Profile berhasil diperbarui.',
-        'data' => [
-            'user' => $user->fresh(),
-        ],
-    ]);
-}
+        $user->update([
+            'name' => $validated['name'],
+            'email' => $validated['email'] ?? null,
+            'profile_completed_at' => now(),
+        ]);
 
-public function logout(Request $request)
-{
-    $request->user()->currentAccessToken()?->delete();
+        return response()->json([
+            'status' => true,
+            'message' => 'Profile berhasil diperbarui.',
+            'data' => [
+                'user' => $user->fresh(),
+            ],
+        ]);
+    }
 
-    return response()->json([
-        'status' => true,
-        'message' => 'Logout berhasil.',
-    ]);
-}
+    public function logout(Request $request)
+    {
+        $request->user()->currentAccessToken()?->delete();
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Logout berhasil.',
+        ]);
+    }
 }

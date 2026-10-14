@@ -1,6 +1,7 @@
 
 <?php
 
+use App\Http\Controllers\Api\V1\Admin\AdminComplaintCategoryController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\ComplaintController;
 use App\Http\Controllers\Api\V1\Admin\InstansiController;
@@ -52,6 +53,11 @@ Route::prefix('v1')->group(function () {
                     'show',
                 ]);
 
+                Route::patch(
+                    '/admin/complaints/{id}/category',
+                    [AdminComplaintController::class, 'setCategory']
+                )->whereNumber('id');
+
                 Route::post('/complaints/{id}/delegate', [
                     AdminComplaintController::class,
                     'delegate',
@@ -72,6 +78,32 @@ Route::prefix('v1')->group(function () {
                     AdminVerificationController::class,
                     'verify',
                 ]);
+
+                // Category management
+                Route::get(
+                    '/complaint-categories',
+                    [AdminComplaintCategoryController::class, 'index']
+                );
+
+                Route::post(
+                    '/complaint-categories',
+                    [AdminComplaintCategoryController::class, 'store']
+                );
+
+                Route::get(
+                    '/complaint-categories/{id}',
+                    [AdminComplaintCategoryController::class, 'show']
+                )->whereNumber('id');
+
+                Route::put(
+                    '/complaint-categories/{id}',
+                    [AdminComplaintCategoryController::class, 'update']
+                )->whereNumber('id');
+
+                Route::delete(
+                    '/complaint-categories/{id}',
+                    [AdminComplaintCategoryController::class, 'destroy']
+                )->whereNumber('id');
             });
 
         // Admin Unit

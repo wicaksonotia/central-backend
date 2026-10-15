@@ -29,8 +29,7 @@ class ComplaintController extends Controller
             ->paginate(15);
 
         $complaints->getCollection()->transform(
-            fn(Complaint $complaint) =>
-            $this->appendPhotoUrls($complaint)
+            fn(Complaint $complaint) => $complaint
         );
 
         return response()->json([
@@ -128,7 +127,7 @@ class ComplaintController extends Controller
             return response()->json([
                 'status' => 'success',
                 'message' => 'Pengaduan berhasil dikirim.',
-                'data' => $this->appendPhotoUrls($complaint),
+                'data' => $complaint,
             ], 201);
         } catch (Throwable $e) {
             // Database transaction tidak menghapus file secara otomatis.
@@ -164,7 +163,7 @@ class ComplaintController extends Controller
         return response()->json([
             'status' => 'success',
             'message' => 'Detail pengaduan berhasil diambil.',
-            'data' => $this->appendPhotoUrls($complaint),
+            'data' => $complaint,
         ]);
     }
 
@@ -183,20 +182,5 @@ class ComplaintController extends Controller
         } while ($exists);
 
         return $number;
-    }
-
-    /**
-     * Menambahkan URL foto pada respons API.
-     */
-    private function appendPhotoUrls(Complaint $complaint): Complaint
-    {
-        $complaint->photos->each(function (ComplaintPhoto $photo) {
-            $photo->setAttribute(
-                'url',
-                Storage::url($photo->path)
-            );
-        });
-
-        return $complaint;
     }
 }

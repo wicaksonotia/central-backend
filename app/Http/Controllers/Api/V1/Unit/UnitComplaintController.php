@@ -129,6 +129,104 @@ class UnitComplaintController extends Controller
     }
 
     /**
+     * Mengembalikan pengaduan yang salah unit kepada Admin Utama.
+     */
+    public function returnComplaint(
+        Request $request,
+        string $id
+    ): JsonResponse {
+        $unitIds = $this->getUnitIds($request);
+
+        $validated = $request->validate([
+            'alasan' => [
+                'required',
+                'string',
+                'min:5',
+                'max:2000',
+            ],
+        ]);
+
+        $db = DB::connection('pengaduan');
+
+        $complaint = $db->transaction(function () use (
+            $id,
+            $unitIds,
+            $validated,
+            $request
+        ) {
+            $complaint = Complaint::query()
+                ->whereIn('unit_id', $unitIds)
+                ->whereKey($id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if (! in_array(
+                $complaint->status,
+                ['ditugaskan', 'diproses'],
+                true
+            )) {
+                throw ValidationException::withMessages([
+                    'status' => [
+                        'Pengaduan hanya dapat dikembalikan saat berstatus ditugaskan atau diproses.',
+                    ],
+                ]);
+            }
+
+            // Jangan mengembalikan pengaduan yang masih ditangani
+            // oleh Field Officer.
+            $activeAssignment = ComplaintAssignment::query()
+                ->where('complaint_id', $complaint->id)
+                ->whereNull('selesai_pada')
+                ->exists();
+
+            if ($activeAssignment) {
+                throw ValidationException::withMessages([
+                    'pengaduan' => [
+                        'Pengaduan masih memiliki penugasan aktif kepada Field Officer. Selesaikan atau cabut penugasan tersebut terlebih dahulu.',
+                    ],
+                ]);
+            }
+
+            $statusSebelumnya = $complaint->status;
+            $unitSebelumnya = $complaint->unit;
+            $namaUnit = $unitSebelumnya?->nama ?? 'unit sebelumnya';
+
+            // Kembalikan pengaduan ke antrean Admin Utama.
+            $complaint->unit_id = null;
+            $complaint->status = 'dikembalikan';
+            $complaint->save();
+
+            ComplaintStatusHistory::create([
+                'complaint_id' => $complaint->id,
+                'user_id' => $request->user()->id,
+                'status_sebelumnya' => $statusSebelumnya,
+                'status_baru' => 'dikembalikan',
+                'catatan' => 'Pengaduan dikembalikan oleh '
+                    . $namaUnit . '. Alasan: ' . $validated['alasan'],
+                'berubah_pada' => now(),
+            ]);
+
+            return $complaint->fresh()->load([
+                'user:id,name,email,phone',
+                'category',
+                'unit',
+                'photos',
+                'statusHistories.user:id,name',
+            ]);
+        });
+
+        foreach ($complaint->photos as $photo) {
+            $photo->url = Storage::url($photo->path);
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Pengaduan berhasil dikembalikan kepada Admin Utama.',
+            'data' => $complaint,
+        ]);
+    }
+
+    /**
      * Menambahkan tanggapan atau catatan tindak lanjut.
      */
     public function storeResponse(

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\Storage;
 
 class ComplaintPhoto extends Model
 {
@@ -19,11 +20,22 @@ class ComplaintPhoto extends Model
         'ukuran',
     ];
 
+    protected $appends = ['url'];
+
     protected function casts(): array
     {
         return [
             'ukuran' => 'integer',
         ];
+    }
+
+    public function getUrlAttribute(): ?string
+    {
+        if (empty($this->path)) {
+            return null;
+        }
+
+        return Storage::url($this->path);
     }
 
     public function complaint(): BelongsTo

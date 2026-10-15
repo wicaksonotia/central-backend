@@ -81,8 +81,16 @@ class AdminComplaintController extends Controller
         string $id
     ): JsonResponse {
         $validated = $request->validate([
-            'unit_id' => ['required', 'integer', 'exists:pengaduan.units,id'],
-            'catatan' => ['nullable', 'string', 'max:2000'],
+            'unit_id' => [
+                'required',
+                'integer',
+                'exists:pengaduan.units,id',
+            ],
+            'catatan' => [
+                'nullable',
+                'string',
+                'max:2000',
+            ],
         ]);
 
         $user = $request->user();
@@ -93,12 +101,26 @@ class AdminComplaintController extends Controller
                     ->lockForUpdate()
                     ->findOrFail($id);
 
+                // Hanya pengaduan baru atau yang dikembalikan
+                // yang boleh didelegasikan.
+                if (! in_array(
+                    $complaint->status,
+                    ['diajukan', 'dikembalikan'],
+                    true
+                )) {
+                    throw ValidationException::withMessages([
+                        'status' => [
+                            'Hanya pengaduan baru atau pengaduan yang dikembalikan yang dapat didelegasikan.',
+                        ],
+                    ]);
+                }
+
                 $unit = Unit::query()
                     ->whereKey($validated['unit_id'])
                     ->where('aktif', true)
                     ->first();
 
-                if (!$unit) {
+                if (! $unit) {
                     throw ValidationException::withMessages([
                         'unit_id' => [
                             'Unit tidak ditemukan atau sedang tidak aktif.',
@@ -207,7 +229,6 @@ class AdminComplaintController extends Controller
         ]);
     }
 
-
     public function setCategory(Request $request, int $id)
     {
         $complaint = Complaint::find($id);
@@ -240,19 +261,41 @@ class AdminComplaintController extends Controller
             ],
         ]);
 
-        $complaint->category_id = $validated['category_id'];
+        // Ambil kategori yang dipilih.
+        $category = ComplaintCategory::find($validated['category_id']);
+
+        if (!$category) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Kategori pengaduan tidak ditemukan.',
+            ], 404);
+        }
+
+        // Pastikan kategori memiliki unit tujuan.
+        if (!$category->unit_id) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Kategori ini belum memiliki unit tujuan.',
+            ], 422);
+        }
+
+        // Simpan kategori dan unit tujuan sekaligus.
+        $complaint->category_id = $category->id;
+        $complaint->unit_id = $category->unit_id;
         $complaint->save();
 
-        $complaint->load('category');
+        $complaint->load(['category', 'unit']);
 
         return response()->json([
             'status' => 'success',
-            'message' => 'Kategori pengaduan berhasil ditentukan.',
+            'message' => 'Kategori dan unit tujuan pengaduan berhasil ditentukan.',
             'data' => [
                 'id' => $complaint->id,
                 'nomor_pengaduan' => $complaint->nomor_pengaduan,
                 'category_id' => $complaint->category_id,
                 'category' => $complaint->category,
+                'unit_id' => $complaint->unit_id,
+                'unit' => $complaint->unit,
             ],
         ]);
     }

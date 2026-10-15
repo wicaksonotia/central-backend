@@ -118,6 +118,12 @@ Route::prefix('v1')->group(function () {
                 'show',
             ]);
 
+            // Mengembalikan pengaduan ke Admin Utama
+            Route::post('/complaints/{id}/return', [
+                UnitComplaintController::class,
+                'returnComplaint',
+            ])->whereNumber('id');
+
             // Menugaskan pengaduan kepada Field Officer
             Route::post('/complaints/{id}/assign', [
                 UnitComplaintController::class,

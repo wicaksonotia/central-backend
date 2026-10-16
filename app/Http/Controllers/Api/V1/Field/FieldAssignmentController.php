@@ -68,27 +68,66 @@ class FieldAssignmentController extends Controller
     {
         $this->ensureFieldOfficer($request);
 
-        $assignments = ComplaintAssignment::query()
-            ->where('user_id', $request->user()->id)
+        $validated = $request->validate([
+            'status' => [
+                'nullable',
+                // 'in:ditugaskan,diproses,menunggu_pemeriksaan_unit',
+                'in:diproses,menunggu_pemeriksaan_unit',
+            ],
+        ]);
+
+        $userId = (int) $request->user()->id;
+        $status = $validated['status'] ?? null;
+
+        // Statistik dihitung dari seluruh penugasan milik petugas,
+        // bukan hanya data pada halaman yang sedang dibuka.
+        $countByStatus = function (?string $filterStatus = null) use ($userId) {
+            return ComplaintAssignment::query()
+                ->where('user_id', $userId)
+                ->whereHas('complaint', function ($query) use ($filterStatus) {
+                    if ($filterStatus !== null) {
+                        $query->where('status', $filterStatus);
+                    }
+                })
+                ->count();
+        };
+
+        $summary = [
+            'total' => $countByStatus(),
+            // 'ditugaskan' => $countByStatus('ditugaskan'),
+            'diproses' => $countByStatus('diproses'),
+            'menunggu_pemeriksaan_unit' => $countByStatus(
+                'menunggu_pemeriksaan_unit'
+            ),
+        ];
+
+        $query = ComplaintAssignment::query()
+            ->where('user_id', $userId)
             ->with([
                 'complaint.user',
                 'complaint.category',
                 'complaint.unit',
                 'complaint.photos',
                 'assignedBy',
-            ])
+            ]);
+
+        if ($status !== null) {
+            $query->whereHas('complaint', function ($complaintQuery) use ($status) {
+                $complaintQuery->where('status', $status);
+            });
+        }
+
+        $assignments = $query
             ->orderByDesc('ditugaskan_pada')
-            ->paginate(15);
+            ->paginate(15)
+            ->withQueryString();
 
         $assignments->getCollection()->transform(
             function ($assignment) {
                 if ($assignment->complaint) {
                     $assignment->complaint->photos->transform(
                         function ($photo) {
-                            $photo->url = \Illuminate\Support\Facades\Storage::url(
-                                $photo->path
-                            );
-
+                            $photo->url = Storage::url($photo->path);
                             return $photo;
                         }
                     );
@@ -101,8 +140,13 @@ class FieldAssignmentController extends Controller
         return response()->json([
             'message' => 'Daftar tugas Field Officer berhasil diambil.',
             'data' => $assignments,
+            'summary' => $summary,
+            'filters' => [
+                'status' => $status,
+            ],
         ]);
     }
+
 
     /**
      * Detail tugas berdasarkan ID penugasan.
@@ -127,21 +171,31 @@ class FieldAssignmentController extends Controller
         if ($assignment->complaint) {
             $assignment->complaint->photos->transform(
                 function ($photo) {
-                    $photo->url = \Illuminate\Support\Facades\Storage::url(
-                        $photo->path
-                    );
+                    $photo->url = Storage::url($photo->path);
 
                     return $photo;
                 }
             );
         }
 
+        // Ambil foto bukti khusus untuk penugasan ini.
+        $evidencePhotos = ComplaintEvidencePhoto::query()
+            ->where('assignment_id', $assignment->id)
+            ->orderBy('id')
+            ->get()
+            ->map(function ($photo) {
+                $photo->url = Storage::url($photo->path);
+
+                return $photo;
+            });
+
+        $assignment->setAttribute('evidence_photos', $evidencePhotos);
+
         return response()->json([
             'message' => 'Detail tugas berhasil diambil.',
             'data' => $assignment,
         ]);
     }
-
 
     /**
      * Field Officer mengirim hasil penanganan dan foto bukti.
@@ -180,7 +234,7 @@ class FieldAssignmentController extends Controller
                         ->whereKey($assignment->complaint_id)
                         ->lockForUpdate()
                         ->firstOrFail();
-                        
+
                     $this->ensureFieldOfficerForUnit(
                         (int) $request->user()->id,
                         (int) $complaint->unit_id

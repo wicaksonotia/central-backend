@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Models\Complaint;
 use App\Models\ComplaintCategory;
+use App\Models\ComplaintEvidencePhoto;
 use App\Models\ComplaintPhoto;
 use App\Models\ComplaintStatusHistory;
 use Illuminate\Http\JsonResponse;
@@ -143,6 +144,7 @@ class ComplaintController extends Controller
      * Detail pengaduan.
      * Pengguna hanya dapat melihat pengaduannya sendiri.
      */
+
     public function show(
         Request $request,
         string $id
@@ -160,12 +162,31 @@ class ComplaintController extends Controller
             ])
             ->findOrFail($id);
 
+        // Ambil foto bukti hasil penanganan petugas.
+        $evidencePhotos = ComplaintEvidencePhoto::query()
+            ->where('complaint_id', $complaint->id)
+            ->orderBy('created_at')
+            ->get()
+            ->map(function ($photo) {
+                return [
+                    'id' => $photo->id,
+                    'url' => Storage::url($photo->path),
+                    'created_at' => $photo->created_at,
+                ];
+            })
+            ->values();
+
+        // Tambahkan foto bukti ke data detail pengaduan.
+        $data = $complaint->toArray();
+        $data['evidence_photos'] = $evidencePhotos;
+
         return response()->json([
             'status' => 'success',
             'message' => 'Detail pengaduan berhasil diambil.',
-            'data' => $complaint,
+            'data' => $data,
         ]);
     }
+
 
     /**
      * Membuat nomor pengaduan yang unik.

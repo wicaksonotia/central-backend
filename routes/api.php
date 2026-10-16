@@ -139,6 +139,12 @@ Route::prefix('v1')->group(function () {
                 UnitComplaintController::class,
                 'reviewAssignment',
             ]);
+
+
+            Route::get('/field-officers', [
+                UnitComplaintController::class,
+                'fieldOfficers',
+            ]);
         });
 
         // Field Officer

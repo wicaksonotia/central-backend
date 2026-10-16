@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1\Field;
 
 use App\Http\Controllers\Controller;
+use App\Models\Complaint;
 use App\Models\ComplaintAssignment;
 use App\Models\ComplaintEvidencePhoto;
 use App\Models\ComplaintResponse;
@@ -31,6 +32,34 @@ class FieldAssignmentController extends Controller
             'Akses hanya untuk Field Officer.'
         );
     }
+
+    /**
+     * Pastikan Field Officer terdaftar pada unit pengaduan.
+     */
+    private function ensureFieldOfficerForUnit(
+        int $userId,
+        int $unitId
+    ): void {
+        $isFieldOfficer = DB::connection('pengaduan')
+            ->table('user_roles')
+            ->join(
+                'roles',
+                'roles.id',
+                '=',
+                'user_roles.role_id'
+            )
+            ->where('user_roles.user_id', $userId)
+            ->where('user_roles.unit_id', $unitId)
+            ->where('roles.kode', 'field_officer')
+            ->exists();
+
+        abort_unless(
+            $isFieldOfficer,
+            403,
+            'Anda tidak terdaftar sebagai Field Officer pada unit pengaduan ini.'
+        );
+    }
+
 
     /**
      * Daftar tugas milik Field Officer yang login.
@@ -147,10 +176,15 @@ class FieldAssignmentController extends Controller
                         abort(422, 'Tugas ini sudah dikirim atau diselesaikan.');
                     }
 
-                    $complaint = \App\Models\Complaint::query()
+                    $complaint = Complaint::query()
                         ->whereKey($assignment->complaint_id)
                         ->lockForUpdate()
                         ->firstOrFail();
+                        
+                    $this->ensureFieldOfficerForUnit(
+                        (int) $request->user()->id,
+                        (int) $complaint->unit_id
+                    );
 
                     if ($complaint->status !== 'diproses') {
                         abort(

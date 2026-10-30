@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\V1\Admin\InstansiController;
 use App\Http\Controllers\Api\V1\Admin\UnitController;
 use App\Http\Controllers\Api\V1\Admin\AdminComplaintController;
 use App\Http\Controllers\Api\V1\Admin\AdminVerificationController;
+use App\Http\Controllers\Api\V1\BeritaPengumumanController;
 use App\Http\Controllers\Api\V1\Field\FieldAssignmentController;
 use App\Http\Controllers\Api\V1\Unit\UnitComplaintController;
 use Illuminate\Support\Facades\Route;
@@ -20,12 +21,45 @@ Route::prefix('v1')->group(function () {
         Route::post('/phone/verify-otp', [AuthController::class, 'verifyOtp']);
     });
 
+    // =====================================================
+    // BERITA & PENGUMUMAN - PUBLIC
+    // =====================================================
+
+    Route::get('/berita-pengumuman', [
+        BeritaPengumumanController::class,
+        'index',
+    ]);
+
+    Route::get('/berita-pengumuman/{id}', [
+        BeritaPengumumanController::class,
+        'show',
+    ])->whereNumber('id');
+
     // Pengguna yang sudah login
     Route::middleware('auth:sanctum')->group(function () {
 
         Route::get('/me', [AuthController::class, 'me']);
         Route::put('/me', [AuthController::class, 'updateProfile']);
         Route::post('/auth/logout', [AuthController::class, 'logout']);
+
+        // =====================================================
+        // BERITA & PENGUMUMAN - ADMIN UTAMA & ADMIN UNIT
+        // =====================================================
+
+        Route::prefix('admin/berita-pengumuman')
+            ->controller(BeritaPengumumanController::class)
+            ->group(function () {
+
+                Route::get('/', 'adminIndex');
+
+                Route::post('/', 'store');
+
+                Route::post('/{id}', 'update')
+                    ->whereNumber('id');
+
+                Route::delete('/{id}', 'destroy')
+                    ->whereNumber('id');
+            });
 
         // Pengaduan milik masyarakat
         Route::apiResource('complaints', ComplaintController::class)

@@ -48,4 +48,12 @@ class ComplaintAssignment extends Model
     {
         return $this->hasMany(ComplaintEvidencePhoto::class, 'assignment_id');
     }
+
+    public function responses(): HasMany
+    {
+        return $this->hasMany(
+            ComplaintResponse::class,
+            'assignment_id'
+        );
+    }
 }

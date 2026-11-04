@@ -42,28 +42,14 @@ Route::prefix('v1')->group(function () {
         Route::put('/me', [AuthController::class, 'updateProfile']);
         Route::post('/auth/logout', [AuthController::class, 'logout']);
 
-        // =====================================================
-        // BERITA & PENGUMUMAN - ADMIN UTAMA & ADMIN UNIT
-        // =====================================================
-
-        Route::prefix('admin/berita-pengumuman')
-            ->controller(BeritaPengumumanController::class)
-            ->group(function () {
-
-                Route::get('/', 'adminIndex');
-
-                Route::post('/', 'store');
-
-                Route::post('/{id}', 'update')
-                    ->whereNumber('id');
-
-                Route::delete('/{id}', 'destroy')
-                    ->whereNumber('id');
-            });
 
         // Pengaduan milik masyarakat
         Route::apiResource('complaints', ComplaintController::class)
             ->only(['index', 'store', 'show']);
+        Route::get('/masyarakat/dashboard', [
+            ComplaintController::class,
+            'dashboard',
+        ]);
 
         // Admin utama
         Route::prefix('admin')
@@ -75,6 +61,11 @@ Route::prefix('v1')->group(function () {
 
                 // Manajemen unit
                 Route::apiResource('units', UnitController::class);
+
+                Route::get('/dashboard', [
+                    AdminComplaintController::class,
+                    'dashboard',
+                ]);
 
                 // Pengelolaan pengaduan oleh Admin Utama
                 Route::get('/complaints', [
@@ -88,7 +79,7 @@ Route::prefix('v1')->group(function () {
                 ]);
 
                 Route::patch(
-                    '/admin/complaints/{id}/category',
+                    '/complaints/{id}/category',
                     [AdminComplaintController::class, 'setCategory']
                 )->whereNumber('id');
 
@@ -140,8 +131,14 @@ Route::prefix('v1')->group(function () {
                 )->whereNumber('id');
             });
 
+
         // Admin Unit
         Route::prefix('unit')->group(function () {
+            Route::get('/dashboard', [
+                UnitComplaintController::class,
+                'dashboard',
+            ]);
+
             Route::get('/complaints', [
                 UnitComplaintController::class,
                 'index',
@@ -174,15 +171,42 @@ Route::prefix('v1')->group(function () {
                 'reviewAssignment',
             ]);
 
-
             Route::get('/field-officers', [
                 UnitComplaintController::class,
                 'fieldOfficers',
             ]);
         });
 
+        // =====================================================
+        // BERITA & PENGUMUMAN - ADMIN UTAMA & ADMIN UNIT
+        // =====================================================
+
+        Route::prefix('admin/berita-pengumuman')
+            ->controller(BeritaPengumumanController::class)
+            ->group(function () {
+
+                Route::get('/', 'adminIndex');
+
+                Route::post('/', 'store');
+
+                Route::post('/{id}', 'update')
+                    ->whereNumber('id');
+
+                Route::delete('/{id}', 'destroy')
+                    ->whereNumber('id');
+            });
+
+        // Field Officer
         // Field Officer
         Route::prefix('field')->group(function () {
+
+            // Dashboard Field Officer
+            Route::get('/dashboard', [
+                FieldAssignmentController::class,
+                'dashboard',
+            ]);
+
+            // Daftar penugasan
             Route::get('/assignments', [
                 FieldAssignmentController::class,
                 'index',

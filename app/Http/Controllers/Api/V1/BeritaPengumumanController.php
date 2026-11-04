@@ -135,12 +135,25 @@ class BeritaPengumumanController extends Controller
             });
         }
 
+        $userId = (int) $request->user()->getKey();
+
+        $data = $query->paginate(
+            $validated['per_page'] ?? 10
+        );
+
+        $data->getCollection()->transform(function ($article) use ($userId) {
+            $isOwner = (int) $article->created_by === $userId;
+
+            $article->setAttribute('can_edit', $isOwner);
+            $article->setAttribute('can_delete', $isOwner);
+
+            return $article;
+        });
+
         return response()->json([
             'status' => true,
             'message' => 'Berhasil mengambil data artikel.',
-            'data' => $query->paginate(
-                $validated['per_page'] ?? 15
-            ),
+            'data' => $data,
         ]);
     }
 

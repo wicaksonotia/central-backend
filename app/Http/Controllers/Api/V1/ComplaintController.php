@@ -13,11 +13,57 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use Illuminate\Validation\ValidationException;
 use Throwable;
 
 class ComplaintController extends Controller
 {
+    public function dashboard(Request $request): JsonResponse
+    {
+        $userId = $request->user()->id;
+
+        // Statistik pengaduan milik masyarakat
+        $statusCounts = Complaint::query()
+            ->where('user_id', $userId)
+            ->select('status')
+            ->selectRaw('COUNT(*) as total')
+            ->groupBy('status')
+            ->pluck('total', 'status');
+
+        $statistics = [
+            'total' => (int) $statusCounts->sum(),
+
+            'baru' => (int) ($statusCounts['diajukan'] ?? 0),
+
+            'ditugaskan' => (int) ($statusCounts['ditugaskan'] ?? 0),
+
+            'dalam_penanganan' =>
+            (int) ($statusCounts['diproses'] ?? 0) +
+                (int) ($statusCounts['menunggu_pemeriksaan_unit'] ?? 0),
+
+            'menunggu_verifikasi' =>
+            (int) ($statusCounts['menunggu_verifikasi'] ?? 0),
+
+            'selesai' => (int) ($statusCounts['ditutup'] ?? 0),
+        ];
+
+        // Lima pengaduan terbaru milik masyarakat
+        $recentComplaints = Complaint::query()
+            ->where('user_id', $userId)
+            ->with(['category', 'unit', 'photos'])
+            ->latest()
+            ->limit(5)
+            ->get();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Dashboard masyarakat berhasil diambil.',
+            'data' => [
+                'statistics' => $statistics,
+                'recent_complaints' => $recentComplaints,
+            ],
+        ]);
+    }
+
     /**
      * Daftar pengaduan milik pengguna yang sedang login.
      */

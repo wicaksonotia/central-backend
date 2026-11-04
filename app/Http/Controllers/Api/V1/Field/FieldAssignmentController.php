@@ -8,12 +8,57 @@ use App\Models\ComplaintAssignment;
 use App\Models\ComplaintEvidencePhoto;
 use App\Models\ComplaintResponse;
 use App\Models\ComplaintStatusHistory;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
 class FieldAssignmentController extends Controller
 {
+    public function dashboard(Request $request): JsonResponse
+    {
+        $this->ensureFieldOfficer($request);
+
+        $userId = (int) $request->user()->id;
+
+        // Query dasar: hanya penugasan milik Field Officer yang login.
+        $baseQuery = ComplaintAssignment::query()
+            ->where('user_id', $userId);
+
+        // Menghitung seluruh penugasan berdasarkan status pengaduan.
+        $countByStatus = function (?string $status = null) use ($baseQuery): int {
+            $query = clone $baseQuery;
+
+            if ($status !== null) {
+                $query->whereHas('complaint', function ($complaintQuery) use ($status) {
+                    $complaintQuery->where('status', $status);
+                });
+            }
+
+            return (int) $query->count();
+        };
+
+        // Statistik penugasan Field Officer.
+        $statistics = [
+            // Seluruh tugas yang pernah diberikan kepada petugas.
+            'total' => $countByStatus(),
+
+            // Tugas yang sedang dikerjakan Field Officer.
+            'diproses' => $countByStatus('diproses'),
+
+            // Tugas yang sudah diserahkan dan menunggu pemeriksaan Admin Unit.
+            'menunggu_pemeriksaan_unit' =>
+            $countByStatus('menunggu_pemeriksaan_unit'),
+        ];
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Dashboard Field Officer berhasil diambil.',
+            'data' => [
+                'statistics' => $statistics,
+            ],
+        ]);
+    }
     /**
      * Pastikan pengguna memiliki role field_officer.
      */
@@ -164,7 +209,7 @@ class FieldAssignmentController extends Controller
                 'complaint.photos',
                 'complaint.statusHistories.user',
                 'complaint.responses.user',
-                'assignedBy',
+                'assignedBy'
             ])
             ->findOrFail($id);
 
@@ -250,6 +295,7 @@ class FieldAssignmentController extends Controller
                     // Simpan laporan sebagai catatan internal terlebih dahulu.
                     $response = ComplaintResponse::create([
                         'complaint_id' => $complaint->id,
+                        'assignment_id' => $assignment->id,
                         'user_id' => $request->user()->id,
                         'isi' => $validated['catatan'],
                         'untuk_publik' => false,

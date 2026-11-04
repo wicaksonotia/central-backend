@@ -17,6 +17,50 @@ use Illuminate\Validation\ValidationException;
 class AdminComplaintController extends Controller
 {
     /**
+     * Ringkasan dashboard untuk Admin Utama.
+     */
+    public function dashboard(): JsonResponse
+    {
+        $statusCounts = Complaint::query()
+            ->select('status')
+            ->selectRaw('COUNT(*) as total')
+            ->groupBy('status')
+            ->pluck('total', 'status');
+
+        $statistics = [
+            'total' => $statusCounts->sum(),
+
+            'baru' => (int) ($statusCounts['diajukan'] ?? 0),
+
+            'ditugaskan' => (int) ($statusCounts['ditugaskan'] ?? 0),
+
+            'dalam_penanganan' =>
+            (int) ($statusCounts['diproses'] ?? 0) +
+                (int) ($statusCounts['menunggu_pemeriksaan_unit'] ?? 0),
+
+            'menunggu_verifikasi' =>
+            (int) ($statusCounts['menunggu_verifikasi'] ?? 0),
+
+            'selesai' => (int) ($statusCounts['ditutup'] ?? 0),
+        ];
+
+        $recentComplaints = Complaint::query()
+            ->with(['user:id,name,email,phone', 'category', 'unit', 'photos'])
+            ->latest()
+            ->limit(5)
+            ->get();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Dashboard berhasil diambil.',
+            'data' => [
+                'statistics' => $statistics,
+                'recent_complaints' => $recentComplaints,
+            ],
+        ]);
+    }
+
+    /**
      * Daftar pengaduan untuk Admin Utama.
      */
     public function index(Request $request): JsonResponse
@@ -63,8 +107,20 @@ class AdminComplaintController extends Controller
                 'statusHistories.user:id,name',
                 'responses.user:id,name',
                 'verifications.user:id,name',
+                'assignments.user:id,name,email,phone',
+                'assignments.assignedBy:id,name',
+                'assignments.responses.user:id,name',
+                'assignments.evidencePhotos.user:id,name',
             ])
             ->findOrFail($id);
+
+        $complaint->assignments->each(function ($assignment) {
+            $assignment->evidencePhotos->each(function ($photo) {
+                $photo->url = \Illuminate\Support\Facades\Storage::url(
+                    $photo->path
+                );
+            });
+        });
 
         return response()->json([
             'status' => 'success',

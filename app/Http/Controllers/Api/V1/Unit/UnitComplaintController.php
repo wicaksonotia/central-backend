@@ -16,6 +16,80 @@ use Illuminate\Validation\ValidationException;
 
 class UnitComplaintController extends Controller
 {
+    public function dashboard(Request $request): JsonResponse
+    {
+        $unitIds = $this->getUnitIds($request);
+
+        // Query dasar: hanya pengaduan dari unit yang dapat diakses.
+        $baseQuery = Complaint::query()
+            ->whereIn('unit_id', $unitIds);
+
+        // Menghitung seluruh pengaduan berdasarkan status.
+        $statusCounts = (clone $baseQuery)
+            ->selectRaw('status, COUNT(*) as total')
+            ->groupBy('status')
+            ->get()
+            ->mapWithKeys(function ($item) {
+                $status = $item->status ?? 'unknown';
+
+                return [
+                    $status => (int) $item->total,
+                ];
+            });
+
+        // Total seluruh pengaduan.
+        $total = (int) $statusCounts->sum();
+
+        // Statistik berdasarkan kelompok alur kerja Admin Unit.
+        $statistics = [
+            'total' => $total,
+
+            // Admin Utama -> Admin Unit
+            'masuk' => (int) ($statusCounts['ditugaskan'] ?? 0),
+
+            // Admin Unit -> Field Officer -> Pemeriksaan Unit
+            'dalam_penanganan' =>
+            (int) ($statusCounts['diproses'] ?? 0) +
+                (int) ($statusCounts['menunggu_pemeriksaan_unit'] ?? 0),
+
+            // Admin Unit approved -> menunggu Admin Utama
+            'menunggu_verifikasi' =>
+            (int) ($statusCounts['menunggu_verifikasi'] ?? 0),
+
+            // Admin Utama approved
+            'selesai' =>
+            (int) ($statusCounts['ditutup'] ?? 0),
+
+            // Tetap tersedia untuk kebutuhan detail/debugging.
+            'by_status' => $statusCounts,
+        ];
+
+        // Mengambil tiga pengaduan terbaru.
+        $recentComplaints = (clone $baseQuery)
+            ->with([
+                'user:id,name,email,phone',
+                'category',
+                'unit',
+                'photos',
+            ])
+            ->latest()
+            ->limit(3)
+            ->get()
+            ->map(
+                fn(Complaint $complaint) =>
+                $this->appendPhotoUrls($complaint)
+            );
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Dashboard Admin Unit berhasil diambil.',
+            'data' => [
+                'statistics' => $statistics,
+                'recent_complaints' => $recentComplaints,
+            ],
+        ]);
+    }
+
     /**
      * Mengambil ID unit yang menjadi kewenangan Admin Unit.
      */
@@ -107,6 +181,9 @@ class UnitComplaintController extends Controller
 
                 // Foto bukti penanganan
                 'assignments.evidencePhotos',
+                'assignments.evidencePhotos.user:id,name',
+
+                'assignments.responses.user:id,name',
                 'assignments.evidencePhotos.user:id,name',
             ])
             ->findOrFail($id);
@@ -578,7 +655,6 @@ class UnitComplaintController extends Controller
             'data' => $result,
         ]);
     }
-
 
     /**
      * Daftar Field Officer pada unit tertentu.

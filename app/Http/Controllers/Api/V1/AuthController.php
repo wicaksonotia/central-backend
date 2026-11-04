@@ -179,7 +179,6 @@ class AuthController extends Controller
         return $phone;
     }
 
-
     public function me(Request $request)
     {
         $user = $request->user()->load([
@@ -199,12 +198,23 @@ class AuthController extends Controller
                     'phone' => $user->phone,
                     'avatar' => $user->avatar,
                     'profile_completed_at' => $user->profile_completed_at,
+
                     'roles' => $user->roles->map(function ($role) {
+                        $unitId = $role->pivot->unit_id;
+
+                        $unit = $unitId
+                            ? \App\Models\Unit::with('instansi:id,nama')
+                            ->find($unitId)
+                            : null;
+
                         return [
                             'id' => $role->id,
                             'nama' => $role->nama,
                             'kode' => $role->kode,
-                            'unit_id' => $role->pivot->unit_id,
+                            'unit_id' => $unitId,
+                            'unit_nama' => $unit?->nama,
+                            'instansi_id' => $unit?->instansi_id,
+                            'instansi_nama' => $unit?->instansi?->nama,
                         ];
                     })->values(),
                 ],

@@ -21,6 +21,7 @@ class DatabaseSeeder extends Seeder
             ComplaintCategorySeeder::class,
             UnitSeeder::class,
             UserSeeder::class,
+            UserRoleSeeder::class,
         ]);
     }
 }

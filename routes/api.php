@@ -15,6 +15,13 @@ use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
 
+    Route::get('/ping', function () {
+        return response()->json([
+            'success' => true,
+            'message' => 'Central Backend API is running',
+            'timestamp' => now()->toDateTimeString(),
+        ]);
+    });
     // Autentikasi
     Route::prefix('auth')->group(function () {
         Route::post('/phone/request-otp', [AuthController::class, 'requestOtp']);

@@ -7,10 +7,12 @@ use App\Http\Controllers\Api\V1\ComplaintController;
 use App\Http\Controllers\Api\V1\Admin\InstansiController;
 use App\Http\Controllers\Api\V1\Admin\UnitController;
 use App\Http\Controllers\Api\V1\Admin\AdminComplaintController;
+use App\Http\Controllers\Api\V1\Admin\AdminUserController;
 use App\Http\Controllers\Api\V1\Admin\AdminVerificationController;
 use App\Http\Controllers\Api\V1\BeritaPengumumanController;
 use App\Http\Controllers\Api\V1\Field\FieldAssignmentController;
 use App\Http\Controllers\Api\V1\Unit\UnitComplaintController;
+use App\Http\Controllers\Api\V1\Unit\UnitFieldOfficerController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
@@ -136,6 +138,17 @@ Route::prefix('v1')->group(function () {
                     '/complaint-categories/{id}',
                     [AdminComplaintCategoryController::class, 'destroy']
                 )->whereNumber('id');
+
+                // management of Admin Unit and Field Officer users
+                Route::post('/users/unit-admin/bulk', [
+                    AdminUserController::class,
+                    'storeUnitAdmins',
+                ]);
+
+                Route::post('/users/field-officer/bulk', [
+                    AdminUserController::class,
+                    'storeFieldOfficers',
+                ]);
             });
 
 
@@ -182,6 +195,12 @@ Route::prefix('v1')->group(function () {
                 UnitComplaintController::class,
                 'fieldOfficers',
             ]);
+
+            // Manajemen Field Officer oleh Admin Unit
+            Route::post('/field-officers/bulk', [
+                UnitFieldOfficerController::class,
+                'store',
+            ]);
         });
 
         // =====================================================
@@ -203,7 +222,7 @@ Route::prefix('v1')->group(function () {
                     ->whereNumber('id');
             });
 
-        // Field Officer
+
         // Field Officer
         Route::prefix('field')->group(function () {
 

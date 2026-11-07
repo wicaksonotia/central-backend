@@ -8,9 +8,9 @@ use App\Models\ComplaintAssignment;
 use App\Models\ComplaintResponse;
 use App\Models\ComplaintStatusHistory;
 use App\Models\ComplaintVerification;
+use App\Models\UserRole;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 
@@ -95,13 +95,13 @@ class UnitComplaintController extends Controller
      */
     private function getUnitIds(Request $request): array
     {
-        $unitIds = DB::connection('pengaduan')
-            ->table('user_roles')
-            ->join('roles', 'roles.id', '=', 'user_roles.role_id')
-            ->where('user_roles.user_id', $request->user()->id)
-            ->where('roles.kode', 'unit_admin')
-            ->whereNotNull('user_roles.unit_id')
-            ->pluck('user_roles.unit_id')
+        $unitIds = UserRole::query()
+            ->where('user_id', $request->user()->id)
+            ->whereNotNull('unit_id')
+            ->whereHas('role', function ($query) {
+                $query->where('kode', 'unit_admin');
+            })
+            ->pluck('unit_id')
             ->map(fn($id) => (int) $id)
             ->unique()
             ->values()
@@ -223,9 +223,9 @@ class UnitComplaintController extends Controller
             ],
         ]);
 
-        $db = DB::connection('pengaduan');
+        $connection = (new Complaint())->getConnection();
 
-        $complaint = $db->transaction(function () use (
+        $complaint = $connection->transaction(function () use (
             $id,
             $unitIds,
             $validated,
@@ -237,7 +237,7 @@ class UnitComplaintController extends Controller
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            if (! in_array(
+            if (!in_array(
                 $complaint->status,
                 ['ditugaskan', 'diproses'],
                 true
@@ -265,8 +265,7 @@ class UnitComplaintController extends Controller
             }
 
             $statusSebelumnya = $complaint->status;
-            $unitSebelumnya = $complaint->unit;
-            $namaUnit = $unitSebelumnya?->nama ?? 'unit sebelumnya';
+            $namaUnit = $complaint->unit?->nama ?? 'unit sebelumnya';
 
             // Kembalikan pengaduan ke antrean Admin Utama.
             $complaint->unit_id = null;
@@ -372,22 +371,29 @@ class UnitComplaintController extends Controller
         string $id
     ): JsonResponse {
         $validated = $request->validate([
-            'user_id' => ['required', 'integer', 'min:1'],
-            'catatan' => ['nullable', 'string', 'max:2000'],
+            'user_id' => [
+                'required',
+                'integer',
+                'min:1',
+            ],
+            'catatan' => [
+                'nullable',
+                'string',
+                'max:2000',
+            ],
         ]);
 
         // Pastikan pengguna yang login adalah Admin Unit.
         $unitIds = $this->getUnitIds($request);
 
-        $db = DB::connection('pengaduan');
+        $connection = (new Complaint())->getConnection();
 
         try {
-            $result = $db->transaction(function () use (
+            $result = $connection->transaction(function () use (
                 $id,
                 $validated,
                 $unitIds,
-                $request,
-                $db
+                $request
             ) {
                 // Kunci pengaduan dan pastikan pengaduan
                 // termasuk unit yang dikelola Admin Unit.
@@ -397,14 +403,14 @@ class UnitComplaintController extends Controller
                     ->lockForUpdate()
                     ->first();
 
-                if (! $complaint) {
+                if (!$complaint) {
                     abort(
                         404,
                         'Pengaduan tidak ditemukan pada unit Anda.'
                     );
                 }
 
-                if (! in_array(
+                if (!in_array(
                     $complaint->status,
                     ['ditugaskan', 'diproses'],
                     true
@@ -417,28 +423,15 @@ class UnitComplaintController extends Controller
 
                 // Petugas wajib terdaftar pada unit yang sama
                 // dengan pengaduan yang akan ditugaskan.
-                $fieldOfficerValid = $db->table('user_roles')
-                    ->join(
-                        'roles',
-                        'roles.id',
-                        '=',
-                        'user_roles.role_id'
-                    )
-                    ->where(
-                        'user_roles.user_id',
-                        $validated['user_id']
-                    )
-                    ->where(
-                        'roles.kode',
-                        'field_officer'
-                    )
-                    ->where(
-                        'user_roles.unit_id',
-                        $complaint->unit_id
-                    )
+                $fieldOfficerValid = UserRole::query()
+                    ->where('user_id', $validated['user_id'])
+                    ->where('unit_id', $complaint->unit_id)
+                    ->whereHas('role', function ($query) {
+                        $query->where('kode', 'field_officer');
+                    })
                     ->exists();
 
-                if (! $fieldOfficerValid) {
+                if (!$fieldOfficerValid) {
                     throw ValidationException::withMessages([
                         'user_id' => [
                             'Field Officer harus terdaftar pada unit yang sama dengan pengaduan.',
@@ -462,13 +455,14 @@ class UnitComplaintController extends Controller
                 }
 
                 $previousStatus = $complaint->status;
+                $now = now();
 
                 $assignment = ComplaintAssignment::create([
                     'complaint_id' => $complaint->id,
                     'user_id' => $validated['user_id'],
                     'assigned_by' => $request->user()->id,
                     'catatan' => $validated['catatan'] ?? null,
-                    'ditugaskan_pada' => now(),
+                    'ditugaskan_pada' => $now,
                     'selesai_pada' => null,
                 ]);
 
@@ -481,9 +475,8 @@ class UnitComplaintController extends Controller
                         'user_id' => $request->user()->id,
                         'status_sebelumnya' => $previousStatus,
                         'status_baru' => 'diproses',
-                        'catatan' =>
-                        'Pengaduan ditugaskan kepada Field Officer.',
-                        'berubah_pada' => now(),
+                        'catatan' => 'Pengaduan ditugaskan kepada Field Officer.',
+                        'berubah_pada' => $now,
                     ]);
                 }
 
@@ -499,8 +492,7 @@ class UnitComplaintController extends Controller
 
             return response()->json([
                 'status' => 'success',
-                'message' =>
-                'Pengaduan berhasil ditugaskan kepada Field Officer.',
+                'message' => 'Pengaduan berhasil ditugaskan kepada Field Officer.',
                 'data' => $result,
             ], 201);
         } catch (ValidationException $e) {
@@ -512,12 +504,10 @@ class UnitComplaintController extends Controller
 
             return response()->json([
                 'status' => 'error',
-                'message' =>
-                'Terjadi kesalahan saat menugaskan Field Officer.',
+                'message' => 'Terjadi kesalahan saat menugaskan Field Officer.',
             ], 500);
         }
     }
-
 
     /**
      * Admin Unit memeriksa hasil penanganan Field Officer.
@@ -541,9 +531,9 @@ class UnitComplaintController extends Controller
             ],
         ]);
 
-        $db = DB::connection('pengaduan');
+        $connection = (new Complaint())->getConnection();
 
-        $result = $db->transaction(function () use (
+        $result = $connection->transaction(function () use (
             $id,
             $unitIds,
             $validated,
@@ -597,6 +587,7 @@ class UnitComplaintController extends Controller
 
             $decision = $validated['keputusan'];
             $previousStatus = $complaint->status;
+            $now = now();
 
             $verification = ComplaintVerification::create([
                 'complaint_id' => $complaint->id,
@@ -604,7 +595,7 @@ class UnitComplaintController extends Controller
                 'tahap' => 'admin_unit',
                 'keputusan' => $decision,
                 'catatan' => $validated['catatan'] ?? null,
-                'diverifikasi_pada' => now(),
+                'diverifikasi_pada' => $now,
             ]);
 
             if ($decision === 'disetujui') {
@@ -635,7 +626,7 @@ class UnitComplaintController extends Controller
                 'status_sebelumnya' => $previousStatus,
                 'status_baru' => $newStatus,
                 'catatan' => $statusNote,
-                'berubah_pada' => now(),
+                'berubah_pada' => $now,
             ]);
 
             return [
@@ -653,59 +644,6 @@ class UnitComplaintController extends Controller
                 ? 'Hasil penanganan disetujui dan diteruskan ke Admin Utama.'
                 : 'Hasil penanganan dikembalikan kepada Field Officer.',
             'data' => $result,
-        ]);
-    }
-
-    /**
-     * Daftar Field Officer pada unit tertentu.
-     * Unit harus berada dalam kewenangan Admin Unit yang login.
-     */
-    public function fieldOfficers(Request $request): JsonResponse
-    {
-        $unitIds = $this->getUnitIds($request);
-
-        $validated = $request->validate([
-            'unit_id' => [
-                'required',
-                'integer',
-                'min:1',
-                'in:' . implode(',', $unitIds),
-            ],
-        ]);
-
-        $unitId = (int) $validated['unit_id'];
-
-        $officers = DB::connection('pengaduan')
-            ->table('user_roles')
-            ->join(
-                'roles',
-                'roles.id',
-                '=',
-                'user_roles.role_id'
-            )
-            ->join(
-                'users',
-                'users.id',
-                '=',
-                'user_roles.user_id'
-            )
-            ->where('roles.kode', 'field_officer')
-            ->where('user_roles.unit_id', $unitId)
-            ->select([
-                'users.id',
-                'users.name',
-                'users.email',
-                'users.phone',
-                'user_roles.unit_id',
-            ])
-            ->distinct()
-            ->orderBy('users.name')
-            ->get();
-
-        return response()->json([
-            'status' => 'success',
-            'message' => 'Daftar Field Officer berhasil diambil.',
-            'data' => $officers,
         ]);
     }
 }

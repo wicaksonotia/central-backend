@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\Unit;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class UnitController extends Controller
@@ -92,11 +91,11 @@ class UnitController extends Controller
         $validated['instansi_id'] = $instansiId;
         $validated['parent_id'] = null;
 
-        $unit = DB::connection('pengaduan')->transaction(
-            function () use ($validated) {
-                return Unit::create($validated);
-            }
-        );
+        $connection = (new Unit())->getConnection();
+
+        $unit = $connection->transaction(function () use ($validated) {
+            return Unit::create($validated);
+        });
 
         return response()->json([
             'status' => 'success',
@@ -201,7 +200,8 @@ class UnitController extends Controller
                 ], 422);
             }
 
-            $parent = Unit::where('instansi_id', $instansiId)
+            $parent = Unit::query()
+                ->where('instansi_id', $instansiId)
                 ->find($parentId);
 
             if (!$parent) {
@@ -212,7 +212,9 @@ class UnitController extends Controller
             }
         }
 
-        DB::connection('pengaduan')->transaction(function () use ($unit, $validated) {
+        $connection = $unit->getConnection();
+
+        $connection->transaction(function () use ($unit, $validated) {
             $unit->update($validated);
         });
 
@@ -245,7 +247,9 @@ class UnitController extends Controller
             ], 422);
         }
 
-        DB::connection('pengaduan')->transaction(function () use ($unit) {
+        $connection = $unit->getConnection();
+
+        $connection->transaction(function () use ($unit) {
             $unit->update([
                 'aktif' => false,
             ]);

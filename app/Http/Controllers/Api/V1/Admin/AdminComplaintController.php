@@ -9,7 +9,6 @@ use App\Models\ComplaintStatusHistory;
 use App\Models\Unit;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -151,7 +150,10 @@ class AdminComplaintController extends Controller
 
         $user = $request->user();
 
-        $complaint = DB::connection('pengaduan')->transaction(
+        // Gunakan koneksi dari model Complaint.
+        $connection = (new Complaint())->getConnection();
+
+        $complaint = $connection->transaction(
             function () use ($validated, $user, $id) {
                 $complaint = Complaint::query()
                     ->lockForUpdate()
@@ -159,7 +161,7 @@ class AdminComplaintController extends Controller
 
                 // Hanya pengaduan baru atau yang dikembalikan
                 // yang boleh didelegasikan.
-                if (! in_array(
+                if (!in_array(
                     $complaint->status,
                     ['diajukan', 'dikembalikan'],
                     true
@@ -171,12 +173,13 @@ class AdminComplaintController extends Controller
                     ]);
                 }
 
+                // Pastikan unit tersedia dan aktif.
                 $unit = Unit::query()
                     ->whereKey($validated['unit_id'])
                     ->where('aktif', true)
                     ->first();
 
-                if (! $unit) {
+                if (!$unit) {
                     throw ValidationException::withMessages([
                         'unit_id' => [
                             'Unit tidak ditemukan atau sedang tidak aktif.',
@@ -186,10 +189,12 @@ class AdminComplaintController extends Controller
 
                 $statusSebelumnya = $complaint->status;
 
+                // Perbarui pengaduan.
                 $complaint->unit_id = $unit->id;
                 $complaint->status = 'ditugaskan';
                 $complaint->save();
 
+                // Catat riwayat perubahan status.
                 ComplaintStatusHistory::create([
                     'complaint_id' => $complaint->id,
                     'user_id' => $user->id,
@@ -235,7 +240,9 @@ class AdminComplaintController extends Controller
             ],
         ]);
 
-        $complaint = DB::connection('pengaduan')->transaction(
+        $connection = (new Complaint())->getConnection();
+
+        $complaint = $connection->transaction(
             function () use ($request, $validated, $id) {
                 $complaint = Complaint::query()
                     ->lockForUpdate()

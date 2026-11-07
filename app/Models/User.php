@@ -27,10 +27,11 @@ use Laravel\Sanctum\HasApiTokens;
 ])]
 class User extends Authenticatable
 {
-    /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasFactory, Notifiable;
 
     protected $connection = 'pengaduan';
+
+    protected $table = 'users';
 
     protected $fillable = [
         'name',
@@ -42,11 +43,6 @@ class User extends Authenticatable
         'profile_completed_at',
     ];
 
-    /**
-     * Get the attributes that should be cast.
-     *
-     * @return array<string, string>
-     */
     protected function casts(): array
     {
         return [
@@ -57,6 +53,9 @@ class User extends Authenticatable
         ];
     }
 
+    /**
+     * Relasi role aktif milik user.
+     */
     public function roles(): BelongsToMany
     {
         return $this->belongsToMany(
@@ -65,15 +64,42 @@ class User extends Authenticatable
             'user_id',
             'role_id'
         )
-            ->withPivot('unit_id')
+            ->withPivot([
+                'unit_id',
+                'is_active',
+                'deactivated_at',
+            ])
+            ->wherePivot('is_active', true)
             ->withTimestamps();
     }
 
+    /**
+     * Seluruh riwayat penugasan role user.
+     */
     public function userRoles(): HasMany
     {
         return $this->hasMany(UserRole::class);
     }
 
+    /**
+     * Riwayat penugasan aktif.
+     */
+    public function activeUserRoles(): HasMany
+    {
+        return $this->userRoles()->active();
+    }
+
+    /**
+     * Riwayat penugasan nonaktif.
+     */
+    public function inactiveUserRoles(): HasMany
+    {
+        return $this->userRoles()->inactive();
+    }
+
+    /**
+     * Memeriksa apakah user memiliki role aktif tertentu.
+     */
     public function hasRole(string $role): bool
     {
         return $this->roles()

@@ -139,7 +139,7 @@ Route::prefix('v1')->group(function () {
                     [AdminComplaintCategoryController::class, 'destroy']
                 )->whereNumber('id');
 
-                // management of Admin Unit and Field Officer users
+                // Manajemen Admin Unit dan Field Officer users
                 Route::post('/users/unit-admin/bulk', [
                     AdminUserController::class,
                     'storeUnitAdmins',
@@ -149,6 +149,24 @@ Route::prefix('v1')->group(function () {
                     AdminUserController::class,
                     'storeFieldOfficers',
                 ]);
+
+                Route::get('/users', [AdminUserController::class, 'index']);
+                Route::get('/users/{id}', [AdminUserController::class, 'show']);
+                Route::put('/users/{id}', [AdminUserController::class, 'update']);
+
+                Route::patch('/user-roles/{id}/deactivate', [
+                    AdminUserController::class,
+                    'deactivate',
+                ]);
+                Route::patch(
+                    '/user-roles/{id}/reactivate',
+                    [AdminUserController::class, 'reactivate']
+                );
+
+                Route::patch(
+                    '/users/{id}/transfer',
+                    [AdminUserController::class, 'transfer']
+                );
             });
 
 
@@ -191,16 +209,32 @@ Route::prefix('v1')->group(function () {
                 'reviewAssignment',
             ]);
 
-            Route::get('/field-officers', [
-                UnitComplaintController::class,
-                'fieldOfficers',
-            ]);
-
             // Manajemen Field Officer oleh Admin Unit
             Route::post('/field-officers/bulk', [
                 UnitFieldOfficerController::class,
                 'store',
             ]);
+
+            Route::get('/field-officers', [
+                UnitFieldOfficerController::class,
+                'index',
+            ]);
+
+            Route::get('/field-officers/{id}', [
+                UnitFieldOfficerController::class,
+                'show',
+            ]);
+
+            Route::put('/field-officers/{id}', [UnitFieldOfficerController::class, 'update']);
+
+            Route::patch('/field-officers/{id}/deactivate', [
+                UnitFieldOfficerController::class,
+                'deactivate',
+            ]);
+            Route::patch(
+                '/field-officers/{id}/reactivate',
+                [UnitFieldOfficerController::class, 'reactivate']
+            );
         });
 
         // =====================================================

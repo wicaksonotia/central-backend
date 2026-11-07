@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\BeritaPengumuman;
 use App\Models\User;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -390,38 +389,43 @@ class BeritaPengumumanController extends Controller
     |--------------------------------------------------------------------------
     */
 
+
     private function getManagementAccess(?User $user): ?array
     {
         if (!$user) {
             return null;
         }
 
-        $userId = $user->getKey();
-
-        $roles = DB::connection('pengaduan')
-            ->table('user_roles')
-            ->join('roles', 'roles.id', '=', 'user_roles.role_id')
-            ->leftJoin('units', 'units.id', '=', 'user_roles.unit_id')
-            ->where('user_roles.user_id', $userId)
-            ->select(
-                'roles.kode',
-                'units.instansi_id'
-            )
+        // Ambil seluruh role beserta unit yang dimiliki pengguna.
+        $userRoles = $user->userRoles()
+            ->with([
+                'role:id,kode',
+                'unit:id,instansi_id',
+            ])
             ->get();
 
         // Main Admin dapat mengelola semua instansi.
-        if ($roles->contains('kode', 'main_admin')) {
+        $isMainAdmin = $userRoles->contains(
+            fn($userRole) => $userRole->role?->kode === 'main_admin'
+        );
+
+        if ($isMainAdmin) {
             return [
                 'all' => true,
                 'instansi_ids' => [],
             ];
         }
 
-        // Unit Admin hanya dapat mengelola instansinya.
-        $instansiIds = $roles
-            ->where('kode', 'unit_admin')
-            ->pluck('instansi_id')
+        // Unit Admin hanya dapat mengelola instansi dari unit miliknya.
+        $instansiIds = $userRoles
+            ->filter(
+                fn($userRole) => $userRole->role?->kode === 'unit_admin'
+            )
+            ->map(
+                fn($userRole) => $userRole->unit?->instansi_id
+            )
             ->filter()
+            ->map(fn($id) => (int) $id)
             ->unique()
             ->values()
             ->all();
@@ -435,6 +439,7 @@ class BeritaPengumumanController extends Controller
             'instansi_ids' => $instansiIds,
         ];
     }
+
 
     private function canManageInstansi(
         array $access,

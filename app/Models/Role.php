@@ -9,6 +9,8 @@ class Role extends Model
 {
     protected $connection = 'pengaduan';
 
+    protected $table = 'roles';
+
     protected $fillable = [
         'kode',
         'nama',

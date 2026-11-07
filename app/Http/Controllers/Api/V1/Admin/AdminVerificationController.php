@@ -8,7 +8,6 @@ use App\Models\ComplaintStatusHistory;
 use App\Models\ComplaintVerification;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -38,7 +37,7 @@ class AdminVerificationController extends Controller
             ->paginate(15);
 
         $complaints->getCollection()->each(
-            fn ($complaint) => $this->appendPhotoUrls($complaint)
+            fn($complaint) => $this->appendPhotoUrls($complaint)
         );
 
         return response()->json([
@@ -63,7 +62,7 @@ class AdminVerificationController extends Controller
             ],
             'catatan' => [
                 Rule::requiredIf(
-                    fn () => $request->input('keputusan') === 'ditolak'
+                    fn() => $request->input('keputusan') === 'ditolak'
                 ),
                 'nullable',
                 'string',
@@ -71,7 +70,9 @@ class AdminVerificationController extends Controller
             ],
         ]);
 
-        $result = DB::connection('pengaduan')->transaction(
+        $connection = (new Complaint())->getConnection();
+
+        $result = $connection->transaction(
             function () use ($request, $validated, $id) {
                 $complaint = Complaint::query()
                     ->lockForUpdate()

@@ -4,13 +4,11 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\Complaint;
-use App\Models\ComplaintCategory;
 use App\Models\ComplaintEvidencePhoto;
 use App\Models\ComplaintPhoto;
 use App\Models\ComplaintStatusHistory;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Throwable;
@@ -111,59 +109,67 @@ class ComplaintController extends Controller
         $storedPaths = [];
 
         try {
-            $complaint = DB::connection('pengaduan')
-                ->transaction(function () use (
-                    $request,
-                    $validated,
-                    &$storedPaths
-                ) {
-                    $complaint = Complaint::create([
-                        'nomor_pengaduan' => $this->generateComplaintNumber(),
-                        'user_id' => $request->user()->id,
-                        'judul' => $validated['judul'],
-                        'isi_pengaduan' => $validated['isi_pengaduan'],
-                        'status' => 'diajukan',
-                        'latitude' => $validated['latitude'],
-                        'longitude' => $validated['longitude'],
-                        'alamat' => $validated['alamat'] ?? null,
-                        'diajukan_pada' => now(),
-                    ]);
+            // Gunakan koneksi dari model Complaint.
+            $connection = (new Complaint())->getConnection();
 
-                    foreach ($request->file('photos', []) as $file) {
-                        $path = $file->store(
-                            'complaints/' . $complaint->id,
-                            'public'
+            $complaint = $connection->transaction(function () use (
+                $request,
+                $validated,
+                &$storedPaths
+            ) {
+                $userId = $request->user()->getKey();
+
+                // Simpan data pengaduan.
+                $complaint = Complaint::create([
+                    'nomor_pengaduan' => $this->generateComplaintNumber(),
+                    'user_id' => $userId,
+                    'judul' => $validated['judul'],
+                    'isi_pengaduan' => $validated['isi_pengaduan'],
+                    'status' => 'diajukan',
+                    'latitude' => $validated['latitude'],
+                    'longitude' => $validated['longitude'],
+                    'alamat' => $validated['alamat'] ?? null,
+                    'diajukan_pada' => now(),
+                ]);
+
+                // Simpan foto pengaduan.
+                foreach ($request->file('photos', []) as $file) {
+                    $path = $file->store(
+                        'complaints/' . $complaint->id,
+                        'public'
+                    );
+
+                    if (!$path) {
+                        throw new \RuntimeException(
+                            'Foto pengaduan gagal disimpan.'
                         );
-
-                        if (!$path) {
-                            throw new \RuntimeException(
-                                'Foto pengaduan gagal disimpan.'
-                            );
-                        }
-
-                        $storedPaths[] = $path;
-
-                        ComplaintPhoto::create([
-                            'complaint_id' => $complaint->id,
-                            'path' => $path,
-                            'nama_file' => $file->getClientOriginalName(),
-                            'mime_type' => $file->getMimeType(),
-                            'ukuran' => $file->getSize(),
-                        ]);
                     }
 
-                    ComplaintStatusHistory::create([
+                    $storedPaths[] = $path;
+
+                    ComplaintPhoto::create([
                         'complaint_id' => $complaint->id,
-                        'user_id' => $request->user()->id,
-                        'status_sebelumnya' => null,
-                        'status_baru' => 'diajukan',
-                        'catatan' => 'Pengaduan dibuat oleh masyarakat.',
-                        'berubah_pada' => now(),
+                        'path' => $path,
+                        'nama_file' => $file->getClientOriginalName(),
+                        'mime_type' => $file->getMimeType(),
+                        'ukuran' => $file->getSize(),
                     ]);
+                }
 
-                    return $complaint;
-                });
+                // Simpan riwayat status awal.
+                ComplaintStatusHistory::create([
+                    'complaint_id' => $complaint->id,
+                    'user_id' => $userId,
+                    'status_sebelumnya' => null,
+                    'status_baru' => 'diajukan',
+                    'catatan' => 'Pengaduan dibuat oleh masyarakat.',
+                    'berubah_pada' => now(),
+                ]);
 
+                return $complaint;
+            });
+
+            // Ambil relasi setelah transaksi berhasil.
             $complaint->load([
                 'category',
                 'unit',
@@ -177,7 +183,7 @@ class ComplaintController extends Controller
                 'data' => $complaint,
             ], 201);
         } catch (Throwable $e) {
-            // Database transaction tidak menghapus file secara otomatis.
+            // Rollback database tidak otomatis menghapus file.
             if (!empty($storedPaths)) {
                 Storage::disk('public')->delete($storedPaths);
             }
@@ -190,7 +196,6 @@ class ComplaintController extends Controller
      * Detail pengaduan.
      * Pengguna hanya dapat melihat pengaduannya sendiri.
      */
-
     public function show(
         Request $request,
         string $id

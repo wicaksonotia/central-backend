@@ -16,6 +16,7 @@ class EnsureMainAdmin
 
         if (!$user) {
             return response()->json([
+                'status' => false,
                 'message' => 'Unauthenticated.',
             ], 401);
         }
@@ -26,6 +27,7 @@ class EnsureMainAdmin
 
         if (!$isMainAdmin) {
             return response()->json([
+                'status' => false,
                 'message' => 'Anda tidak memiliki hak akses admin utama.',
             ], 403);
         }

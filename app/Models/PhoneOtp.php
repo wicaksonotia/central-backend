@@ -6,6 +6,10 @@ use Illuminate\Database\Eloquent\Model;
 
 class PhoneOtp extends Model
 {
+    protected $connection = 'pengaduan';
+
+    protected $table = 'phone_otps';
+
     protected $fillable = [
         'phone',
         'otp_hash',

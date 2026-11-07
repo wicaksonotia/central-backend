@@ -8,9 +8,9 @@ use App\Models\ComplaintAssignment;
 use App\Models\ComplaintEvidencePhoto;
 use App\Models\ComplaintResponse;
 use App\Models\ComplaintStatusHistory;
+use App\Models\UserRole;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
 class FieldAssignmentController extends Controller
@@ -59,16 +59,17 @@ class FieldAssignmentController extends Controller
             ],
         ]);
     }
+
     /**
      * Pastikan pengguna memiliki role field_officer.
      */
     private function ensureFieldOfficer(Request $request): void
     {
-        $isFieldOfficer = DB::connection('pengaduan')
-            ->table('user_roles')
-            ->join('roles', 'roles.id', '=', 'user_roles.role_id')
-            ->where('user_roles.user_id', $request->user()->id)
-            ->where('roles.kode', 'field_officer')
+        $isFieldOfficer = UserRole::query()
+            ->where('user_id', $request->user()->id)
+            ->whereHas('role', function ($query) {
+                $query->where('kode', 'field_officer');
+            })
             ->exists();
 
         abort_unless(
@@ -85,17 +86,12 @@ class FieldAssignmentController extends Controller
         int $userId,
         int $unitId
     ): void {
-        $isFieldOfficer = DB::connection('pengaduan')
-            ->table('user_roles')
-            ->join(
-                'roles',
-                'roles.id',
-                '=',
-                'user_roles.role_id'
-            )
-            ->where('user_roles.user_id', $userId)
-            ->where('user_roles.unit_id', $unitId)
-            ->where('roles.kode', 'field_officer')
+        $isFieldOfficer = UserRole::query()
+            ->where('user_id', $userId)
+            ->where('unit_id', $unitId)
+            ->whereHas('role', function ($query) {
+                $query->where('kode', 'field_officer');
+            })
             ->exists();
 
         abort_unless(
@@ -104,7 +100,6 @@ class FieldAssignmentController extends Controller
             'Anda tidak terdaftar sebagai Field Officer pada unit pengaduan ini.'
         );
     }
-
 
     /**
      * Daftar tugas milik Field Officer yang login.
@@ -250,8 +245,17 @@ class FieldAssignmentController extends Controller
         $this->ensureFieldOfficer($request);
 
         $validated = $request->validate([
-            'catatan' => ['required', 'string', 'max:10000'],
-            'photos' => ['required', 'array', 'min:1', 'max:5'],
+            'catatan' => [
+                'required',
+                'string',
+                'max:10000',
+            ],
+            'photos' => [
+                'required',
+                'array',
+                'min:1',
+                'max:5',
+            ],
             'photos.*' => [
                 'required',
                 'image',
@@ -263,16 +267,28 @@ class FieldAssignmentController extends Controller
         $storedPaths = [];
 
         try {
-            $result = DB::connection('pengaduan')->transaction(
-                function () use ($request, $id, $validated, &$storedPaths) {
+            $connection = (new ComplaintAssignment())->getConnection();
+
+            $result = $connection->transaction(
+                function () use (
+                    $request,
+                    $id,
+                    $validated,
+                    &$storedPaths
+                ) {
+                    $userId = (int) $request->user()->id;
+
                     $assignment = ComplaintAssignment::query()
-                        ->where('user_id', $request->user()->id)
+                        ->where('user_id', $userId)
                         ->whereKey($id)
                         ->lockForUpdate()
                         ->firstOrFail();
 
                     if ($assignment->selesai_pada !== null) {
-                        abort(422, 'Tugas ini sudah dikirim atau diselesaikan.');
+                        abort(
+                            422,
+                            'Tugas ini sudah dikirim atau diselesaikan.'
+                        );
                     }
 
                     $complaint = Complaint::query()
@@ -281,7 +297,7 @@ class FieldAssignmentController extends Controller
                         ->firstOrFail();
 
                     $this->ensureFieldOfficerForUnit(
-                        (int) $request->user()->id,
+                        $userId,
                         (int) $complaint->unit_id
                     );
 
@@ -296,7 +312,7 @@ class FieldAssignmentController extends Controller
                     $response = ComplaintResponse::create([
                         'complaint_id' => $complaint->id,
                         'assignment_id' => $assignment->id,
-                        'user_id' => $request->user()->id,
+                        'user_id' => $userId,
                         'isi' => $validated['catatan'],
                         'untuk_publik' => false,
                     ]);
@@ -308,7 +324,7 @@ class FieldAssignmentController extends Controller
                             'public'
                         );
 
-                        if (! $path) {
+                        if (!$path) {
                             throw new \RuntimeException(
                                 'Gagal menyimpan foto bukti.'
                             );
@@ -319,7 +335,7 @@ class FieldAssignmentController extends Controller
                         ComplaintEvidencePhoto::create([
                             'complaint_id' => $complaint->id,
                             'assignment_id' => $assignment->id,
-                            'user_id' => $request->user()->id,
+                            'user_id' => $userId,
                             'path' => $path,
                             'nama_file' => $photo->getClientOriginalName(),
                             'mime_type' => $photo->getMimeType(),
@@ -328,20 +344,24 @@ class FieldAssignmentController extends Controller
                     }
 
                     $previousStatus = $complaint->status;
+                    $now = now();
 
+                    // Perbarui status pengaduan.
                     $complaint->status = 'menunggu_pemeriksaan_unit';
                     $complaint->save();
 
-                    $assignment->selesai_pada = now();
+                    // Tandai assignment sudah dikirim.
+                    $assignment->selesai_pada = $now;
                     $assignment->save();
 
+                    // Catat perubahan status.
                     ComplaintStatusHistory::create([
                         'complaint_id' => $complaint->id,
-                        'user_id' => $request->user()->id,
+                        'user_id' => $userId,
                         'status_sebelumnya' => $previousStatus,
                         'status_baru' => 'menunggu_pemeriksaan_unit',
                         'catatan' => 'Field Officer mengirim hasil penanganan.',
-                        'berubah_pada' => now(),
+                        'berubah_pada' => $now,
                     ]);
 
                     return [

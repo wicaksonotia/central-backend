@@ -1,10 +1,11 @@
 <?php
 
-use App\Http\Middleware\EnsureMainAdmin;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
+
+use App\Modules\Pengaduan\Middleware\EnsureMainAdmin;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -18,10 +19,13 @@ return Application::configure(basePath: dirname(__DIR__))
             'main.admin' => EnsureMainAdmin::class,
         ]);
 
+        // $middleware->redirectGuests(
+        //     fn(Request $request) => $request->is('api/*')
+        //         ? null
+        //         : route('login')
+        // );
         $middleware->redirectGuestsTo(
-            fn(Request $request) => $request->is('api/*')
-                ? null
-                : route('login')
+            fn(Request $request) => null
         );
     })
     ->withExceptions(function (Exceptions $exceptions): void {

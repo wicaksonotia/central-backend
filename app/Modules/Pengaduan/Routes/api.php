@@ -1,0 +1,286 @@
+
+<?php
+
+use App\Modules\Pengaduan\Controllers\Admin\AdminComplaintCategoryController;
+use App\Modules\Pengaduan\Controllers\AuthController;
+use App\Modules\Pengaduan\Controllers\ComplaintController;
+use App\Modules\Pengaduan\Controllers\Admin\InstansiController;
+use App\Modules\Pengaduan\Controllers\Admin\UnitController;
+use App\Modules\Pengaduan\Controllers\Admin\AdminComplaintController;
+use App\Modules\Pengaduan\Controllers\Admin\AdminUserController;
+use App\Modules\Pengaduan\Controllers\Admin\AdminVerificationController;
+use App\Modules\Pengaduan\Controllers\BeritaPengumumanController;
+use App\Modules\Pengaduan\Controllers\Field\FieldAssignmentController;
+use App\Modules\Pengaduan\Controllers\Unit\UnitComplaintController;
+use App\Modules\Pengaduan\Controllers\Unit\UnitFieldOfficerController;
+use Illuminate\Support\Facades\Route;
+
+Route::prefix('v1')->group(function () {
+
+    Route::get('/ping', function () {
+        return response()->json([
+            'success' => true,
+            'message' => 'Central Backend API is running',
+            'timestamp' => now()->toDateTimeString(),
+        ]);
+    });
+    // Autentikasi
+    Route::prefix('auth')->group(function () {
+        Route::post('/phone/request-otp', [AuthController::class, 'requestOtp']);
+        Route::post('/phone/verify-otp', [AuthController::class, 'verifyOtp']);
+    });
+
+    // =====================================================
+    // BERITA & PENGUMUMAN - PUBLIC
+    // =====================================================
+
+    Route::get('/berita-pengumuman', [
+        BeritaPengumumanController::class,
+        'index',
+    ]);
+
+    Route::get('/berita-pengumuman/{id}', [
+        BeritaPengumumanController::class,
+        'show',
+    ])->whereNumber('id');
+
+    // Pengguna yang sudah login
+    Route::middleware('auth:sanctum')->group(function () {
+
+        Route::get('/me', [AuthController::class, 'me']);
+        Route::put('/me', [AuthController::class, 'updateProfile']);
+        Route::post('/auth/logout', [AuthController::class, 'logout']);
+
+
+        // Pengaduan milik masyarakat
+        Route::apiResource('complaints', ComplaintController::class)
+            ->only(['index', 'store', 'show']);
+        Route::get('/masyarakat/dashboard', [
+            ComplaintController::class,
+            'dashboard',
+        ]);
+
+        // Admin utama
+        Route::prefix('admin')
+            ->middleware('main.admin')
+            ->group(function () {
+
+                // Manajemen instansi
+                Route::apiResource('instansi', InstansiController::class);
+
+                // Manajemen unit
+                Route::apiResource('units', UnitController::class);
+
+                Route::get('/dashboard', [
+                    AdminComplaintController::class,
+                    'dashboard',
+                ]);
+
+                // Pengelolaan pengaduan oleh Admin Utama
+                Route::get('/complaints', [
+                    AdminComplaintController::class,
+                    'index',
+                ]);
+
+                Route::get('/complaints/{id}', [
+                    AdminComplaintController::class,
+                    'show',
+                ]);
+
+                Route::patch(
+                    '/complaints/{id}/category',
+                    [AdminComplaintController::class, 'setCategory']
+                )->whereNumber('id');
+
+                Route::post('/complaints/{id}/delegate', [
+                    AdminComplaintController::class,
+                    'delegate',
+                ]);
+
+                Route::post(
+                    '/complaints/{id}/reject',
+                    [AdminComplaintController::class, 'reject']
+                );
+
+                // Pengelolaan verifikasi pengaduan oleh Admin Utama
+                Route::get('/verifications', [
+                    AdminVerificationController::class,
+                    'index',
+                ]);
+
+                Route::post('/complaints/{id}/verify', [
+                    AdminVerificationController::class,
+                    'verify',
+                ]);
+
+                // Category management
+                Route::get(
+                    '/complaint-categories',
+                    [AdminComplaintCategoryController::class, 'index']
+                );
+
+                Route::post(
+                    '/complaint-categories',
+                    [AdminComplaintCategoryController::class, 'store']
+                );
+
+                Route::get(
+                    '/complaint-categories/{id}',
+                    [AdminComplaintCategoryController::class, 'show']
+                )->whereNumber('id');
+
+                Route::put(
+                    '/complaint-categories/{id}',
+                    [AdminComplaintCategoryController::class, 'update']
+                )->whereNumber('id');
+
+                Route::delete(
+                    '/complaint-categories/{id}',
+                    [AdminComplaintCategoryController::class, 'destroy']
+                )->whereNumber('id');
+
+                // Manajemen Admin Unit dan Field Officer users
+                Route::post('/users/unit-admin/bulk', [
+                    AdminUserController::class,
+                    'storeUnitAdmins',
+                ]);
+
+                Route::post('/users/field-officer/bulk', [
+                    AdminUserController::class,
+                    'storeFieldOfficers',
+                ]);
+
+                Route::get('/users', [AdminUserController::class, 'index']);
+                Route::get('/users/{id}', [AdminUserController::class, 'show']);
+                Route::put('/users/{id}', [AdminUserController::class, 'update']);
+
+                Route::patch('/user-roles/{id}/deactivate', [
+                    AdminUserController::class,
+                    'deactivate',
+                ]);
+                Route::patch(
+                    '/user-roles/{id}/reactivate',
+                    [AdminUserController::class, 'reactivate']
+                );
+
+                Route::patch(
+                    '/users/{id}/transfer',
+                    [AdminUserController::class, 'transfer']
+                );
+            });
+
+
+        // Admin Unit
+        Route::prefix('unit')->group(function () {
+            Route::get('/dashboard', [
+                UnitComplaintController::class,
+                'dashboard',
+            ]);
+
+            Route::get('/complaints', [
+                UnitComplaintController::class,
+                'index',
+            ]);
+
+            Route::get('/complaints/{id}', [
+                UnitComplaintController::class,
+                'show',
+            ]);
+
+            // Mengembalikan pengaduan ke Admin Utama
+            Route::post('/complaints/{id}/return', [
+                UnitComplaintController::class,
+                'returnComplaint',
+            ])->whereNumber('id');
+
+            // Menugaskan pengaduan kepada Field Officer
+            Route::post('/complaints/{id}/assign', [
+                UnitComplaintController::class,
+                'assignFieldOfficer',
+            ]);
+
+            Route::post('/complaints/{id}/responses', [
+                UnitComplaintController::class,
+                'storeResponse',
+            ]);
+
+            Route::post('/assignments/{id}/review', [
+                UnitComplaintController::class,
+                'reviewAssignment',
+            ]);
+
+            // Manajemen Field Officer oleh Admin Unit
+            Route::post('/field-officers/bulk', [
+                UnitFieldOfficerController::class,
+                'store',
+            ]);
+
+            Route::get('/field-officers', [
+                UnitFieldOfficerController::class,
+                'index',
+            ]);
+
+            Route::get('/field-officers/{id}', [
+                UnitFieldOfficerController::class,
+                'show',
+            ]);
+
+            Route::put('/field-officers/{id}', [UnitFieldOfficerController::class, 'update']);
+
+            Route::patch('/field-officers/{id}/deactivate', [
+                UnitFieldOfficerController::class,
+                'deactivate',
+            ]);
+            Route::patch(
+                '/field-officers/{id}/reactivate',
+                [UnitFieldOfficerController::class, 'reactivate']
+            );
+        });
+
+        // =====================================================
+        // BERITA & PENGUMUMAN - ADMIN UTAMA & ADMIN UNIT
+        // =====================================================
+
+        Route::prefix('admin/berita-pengumuman')
+            ->controller(BeritaPengumumanController::class)
+            ->group(function () {
+
+                Route::get('/', 'adminIndex');
+
+                Route::post('/', 'store');
+
+                Route::post('/{id}', 'update')
+                    ->whereNumber('id');
+
+                Route::delete('/{id}', 'destroy')
+                    ->whereNumber('id');
+            });
+
+
+        // Field Officer
+        Route::prefix('field')->group(function () {
+
+            // Dashboard Field Officer
+            Route::get('/dashboard', [
+                FieldAssignmentController::class,
+                'dashboard',
+            ]);
+
+            // Daftar penugasan
+            Route::get('/assignments', [
+                FieldAssignmentController::class,
+                'index',
+            ]);
+
+            Route::get('/assignments/{id}', [
+                FieldAssignmentController::class,
+                'show',
+            ]);
+
+            Route::post('/assignments/{id}/submit', [
+                FieldAssignmentController::class,
+                'submit',
+            ]);
+        });
+    });
+});

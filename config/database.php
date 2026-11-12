@@ -125,6 +125,20 @@ return [
             'search_path' => 'public',
             'sslmode' => 'prefer',
         ],
+        
+        'dishub' => [
+            'driver' => 'pgsql',
+            'host' => env('DB_DISHUB_HOST'),
+            'port' => env('DB_DISHUB_PORT', '5432'),
+            'database' => env('DB_DISHUB_DATABASE'),
+            'username' => env('DB_DISHUB_USERNAME'),
+            'password' => env('DB_DISHUB_PASSWORD'),
+            'charset' => 'utf8',
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'search_path' => 'public',
+            'sslmode' => 'prefer',
+        ],
 
         'sqlsrv' => [
             'driver' => 'sqlsrv',

@@ -1,0 +1,365 @@
+<?php
+
+namespace App\Modules\Pengaduan\Controllers\Admin;
+
+use App\Http\Controllers\Controller;
+use App\Modules\Pengaduan\Models\Complaint;
+use App\Modules\Pengaduan\Models\ComplaintCategory;
+use App\Modules\Pengaduan\Models\ComplaintStatusHistory;
+use App\Modules\Pengaduan\Models\Unit;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
+
+class AdminComplaintController extends Controller
+{
+    /**
+     * Ringkasan dashboard untuk Admin Utama.
+     */
+    public function dashboard(): JsonResponse
+    {
+        $statusCounts = Complaint::query()
+            ->select('status')
+            ->selectRaw('COUNT(*) as total')
+            ->groupBy('status')
+            ->pluck('total', 'status');
+
+        $statistics = [
+            'total' => $statusCounts->sum(),
+
+            'baru' => (int) ($statusCounts['diajukan'] ?? 0),
+
+            'ditugaskan' => (int) ($statusCounts['ditugaskan'] ?? 0),
+
+            'dalam_penanganan' =>
+            (int) ($statusCounts['diproses'] ?? 0) +
+                (int) ($statusCounts['menunggu_pemeriksaan_unit'] ?? 0),
+
+            'menunggu_verifikasi' =>
+            (int) ($statusCounts['menunggu_verifikasi'] ?? 0),
+
+            'selesai' => (int) ($statusCounts['ditutup'] ?? 0),
+        ];
+
+        $recentComplaints = Complaint::query()
+            ->with(['user:id,name,email,phone', 'category', 'unit', 'photos'])
+            ->latest()
+            ->limit(5)
+            ->get();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Dashboard berhasil diambil.',
+            'data' => [
+                'statistics' => $statistics,
+                'recent_complaints' => $recentComplaints,
+            ],
+        ]);
+    }
+
+    /**
+     * Daftar pengaduan untuk Admin Utama.
+     */
+    public function index(Request $request): JsonResponse
+    {
+        $query = Complaint::query()
+            ->with([
+                'user:id,name,email,phone',
+                'category',
+                'unit',
+                'photos',
+            ])
+            ->latest();
+
+        // Filter pengaduan yang belum didelegasikan.
+        if ($request->boolean('belum_didelegasikan')) {
+            $query->whereNull('unit_id');
+        }
+
+        // Filter berdasarkan status jika diminta.
+        if ($request->filled('status')) {
+            $query->where('status', $request->string('status')->toString());
+        }
+
+        $complaints = $query->paginate(15);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Daftar pengaduan berhasil diambil.',
+            'data' => $complaints,
+        ]);
+    }
+
+    /**
+     * Detail pengaduan.
+     */
+    public function show(string $id): JsonResponse
+    {
+        $complaint = Complaint::query()
+            ->with([
+                'user:id,name,email,phone',
+                'category',
+                'unit',
+                'photos',
+                'statusHistories.user:id,name',
+                'responses.user:id,name',
+                'verifications.user:id,name',
+                'assignments.user:id,name,email,phone',
+                'assignments.assignedBy:id,name',
+                'assignments.responses.user:id,name',
+                'assignments.evidencePhotos.user:id,name',
+            ])
+            ->findOrFail($id);
+
+        $complaint->assignments->each(function ($assignment) {
+            $assignment->evidencePhotos->each(function ($photo) {
+                $photo->url = \Illuminate\Support\Facades\Storage::url(
+                    $photo->path
+                );
+            });
+        });
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Detail pengaduan berhasil diambil.',
+            'data' => $complaint,
+        ]);
+    }
+
+    /**
+     * Delegasikan pengaduan ke unit.
+     */
+    public function delegate(
+        Request $request,
+        string $id
+    ): JsonResponse {
+        $validated = $request->validate([
+            'unit_id' => [
+                'required',
+                'integer',
+                'exists:pengaduan.units,id',
+            ],
+            'catatan' => [
+                'nullable',
+                'string',
+                'max:2000',
+            ],
+        ]);
+
+        $user = $request->user();
+
+        // Gunakan koneksi dari model Complaint.
+        $connection = (new Complaint())->getConnection();
+
+        $complaint = $connection->transaction(
+            function () use ($validated, $user, $id) {
+                $complaint = Complaint::query()
+                    ->lockForUpdate()
+                    ->findOrFail($id);
+
+                // Hanya pengaduan baru atau yang dikembalikan
+                // yang boleh didelegasikan.
+                if (!in_array(
+                    $complaint->status,
+                    ['diajukan', 'dikembalikan'],
+                    true
+                )) {
+                    throw ValidationException::withMessages([
+                        'status' => [
+                            'Hanya pengaduan baru atau pengaduan yang dikembalikan yang dapat didelegasikan.',
+                        ],
+                    ]);
+                }
+
+                // Pastikan unit tersedia dan aktif.
+                $unit = Unit::query()
+                    ->whereKey($validated['unit_id'])
+                    ->where('aktif', true)
+                    ->first();
+
+                if (!$unit) {
+                    throw ValidationException::withMessages([
+                        'unit_id' => [
+                            'Unit tidak ditemukan atau sedang tidak aktif.',
+                        ],
+                    ]);
+                }
+
+                $statusSebelumnya = $complaint->status;
+
+                // Perbarui pengaduan.
+                $complaint->unit_id = $unit->id;
+                $complaint->status = 'ditugaskan';
+                $complaint->save();
+
+                // Catat riwayat perubahan status.
+                ComplaintStatusHistory::create([
+                    'complaint_id' => $complaint->id,
+                    'user_id' => $user->id,
+                    'status_sebelumnya' => $statusSebelumnya,
+                    'status_baru' => 'ditugaskan',
+                    'catatan' => $validated['catatan']
+                        ?? 'Pengaduan didelegasikan ke unit '
+                        . $unit->nama . '.',
+                    'berubah_pada' => now(),
+                ]);
+
+                return $complaint->load([
+                    'user:id,name,email,phone',
+                    'category',
+                    'unit',
+                    'photos',
+                    'statusHistories',
+                ]);
+            }
+        );
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Pengaduan berhasil didelegasikan ke unit '
+                . $complaint->unit->nama . '.',
+            'data' => $complaint,
+        ]);
+    }
+
+    /**
+     * Menolak pengaduan masyarakat sebelum didelegasikan.
+     */
+    public function reject(
+        Request $request,
+        string $id
+    ): JsonResponse {
+        $validated = $request->validate([
+            'catatan' => [
+                'required',
+                'string',
+                'min:5',
+                'max:2000',
+            ],
+        ]);
+
+        $connection = (new Complaint())->getConnection();
+
+        $complaint = $connection->transaction(
+            function () use ($request, $validated, $id) {
+                $complaint = Complaint::query()
+                    ->lockForUpdate()
+                    ->findOrFail($id);
+
+                if ($complaint->status !== 'diajukan') {
+                    throw ValidationException::withMessages([
+                        'status' => [
+                            'Hanya pengaduan berstatus diajukan yang dapat ditolak pada pemeriksaan awal.',
+                        ],
+                    ]);
+                }
+
+                $statusSebelumnya = $complaint->status;
+                $now = now();
+
+                $complaint->status = 'ditolak';
+                $complaint->save();
+
+                ComplaintStatusHistory::create([
+                    'complaint_id' => $complaint->id,
+                    'user_id' => $request->user()->id,
+                    'status_sebelumnya' => $statusSebelumnya,
+                    'status_baru' => 'ditolak',
+                    'catatan' => $validated['catatan'],
+                    'berubah_pada' => $now,
+                ]);
+
+                return $complaint->fresh()->load([
+                    'user:id,name,email,phone',
+                    'category',
+                    'unit',
+                    'photos',
+                    'statusHistories.user:id,name',
+                ]);
+            }
+        );
+
+        foreach ($complaint->photos as $photo) {
+            $photo->url = Storage::url($photo->path);
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Pengaduan ditolak. Masyarakat harus membuat pengaduan baru jika ingin melaporkannya kembali.',
+            'data' => $complaint,
+        ]);
+    }
+
+    public function setCategory(Request $request, int $id)
+    {
+        $complaint = Complaint::find($id);
+
+        if (!$complaint) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Pengaduan tidak ditemukan.',
+            ], 404);
+        }
+
+        if ($complaint->status !== 'diajukan') {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Kategori hanya dapat ditentukan saat pengaduan masih diajukan.',
+            ], 422);
+        }
+
+        $categoryModel = new ComplaintCategory();
+
+        $validated = $request->validate([
+            'category_id' => [
+                'required',
+                'integer',
+                Rule::exists(
+                    $categoryModel->getConnectionName() . '.' .
+                        $categoryModel->getTable(),
+                    'id'
+                ),
+            ],
+        ]);
+
+        // Ambil kategori yang dipilih.
+        $category = ComplaintCategory::find($validated['category_id']);
+
+        if (!$category) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Kategori pengaduan tidak ditemukan.',
+            ], 404);
+        }
+
+        // Pastikan kategori memiliki unit tujuan.
+        if (!$category->unit_id) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Kategori ini belum memiliki unit tujuan.',
+            ], 422);
+        }
+
+        // Simpan kategori dan unit tujuan sekaligus.
+        $complaint->category_id = $category->id;
+        $complaint->unit_id = $category->unit_id;
+        $complaint->save();
+
+        $complaint->load(['category', 'unit']);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Kategori dan unit tujuan pengaduan berhasil ditentukan.',
+            'data' => [
+                'id' => $complaint->id,
+                'nomor_pengaduan' => $complaint->nomor_pengaduan,
+                'category_id' => $complaint->category_id,
+                'category' => $complaint->category,
+                'unit_id' => $complaint->unit_id,
+                'unit' => $complaint->unit,
+            ],
+        ]);
+    }
+}

@@ -1,0 +1,257 @@
+<?php
+
+namespace App\Modules\Pengaduan\Controllers;
+use App\Http\Controllers\Controller;
+use App\Modules\Pengaduan\Models\Complaint;
+use App\Modules\Pengaduan\Models\ComplaintEvidencePhoto;
+use App\Modules\Pengaduan\Models\ComplaintPhoto;
+use App\Modules\Pengaduan\Models\ComplaintStatusHistory;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Throwable;
+
+class ComplaintController extends Controller
+{
+    public function dashboard(Request $request): JsonResponse
+    {
+        $userId = $request->user()->id;
+
+        // Statistik pengaduan milik masyarakat
+        $statusCounts = Complaint::query()
+            ->where('user_id', $userId)
+            ->select('status')
+            ->selectRaw('COUNT(*) as total')
+            ->groupBy('status')
+            ->pluck('total', 'status');
+
+        $statistics = [
+            'total' => (int) $statusCounts->sum(),
+
+            'baru' => (int) ($statusCounts['diajukan'] ?? 0),
+
+            'ditugaskan' => (int) ($statusCounts['ditugaskan'] ?? 0),
+
+            'dalam_penanganan' =>
+            (int) ($statusCounts['diproses'] ?? 0) +
+                (int) ($statusCounts['menunggu_pemeriksaan_unit'] ?? 0),
+
+            'menunggu_verifikasi' =>
+            (int) ($statusCounts['menunggu_verifikasi'] ?? 0),
+
+            'selesai' => (int) ($statusCounts['ditutup'] ?? 0),
+        ];
+
+        // Lima pengaduan terbaru milik masyarakat
+        $recentComplaints = Complaint::query()
+            ->where('user_id', $userId)
+            ->with(['category', 'unit', 'photos'])
+            ->latest()
+            ->limit(5)
+            ->get();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Dashboard masyarakat berhasil diambil.',
+            'data' => [
+                'statistics' => $statistics,
+                'recent_complaints' => $recentComplaints,
+            ],
+        ]);
+    }
+
+    /**
+     * Daftar pengaduan milik pengguna yang sedang login.
+     */
+    public function index(Request $request): JsonResponse
+    {
+        $complaints = Complaint::query()
+            ->where('user_id', $request->user()->id)
+            ->with(['category', 'unit', 'photos'])
+            ->latest()
+            ->paginate(15);
+
+        $complaints->getCollection()->transform(
+            fn(Complaint $complaint) => $complaint
+        );
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Daftar pengaduan berhasil diambil.',
+            'data' => $complaints,
+        ]);
+    }
+
+    /**
+     * Membuat pengaduan baru beserta foto dan riwayat status.
+     */
+    public function store(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'judul' => ['required', 'string', 'max:255'],
+            'isi_pengaduan' => ['required', 'string'],
+            'latitude' => ['required', 'numeric', 'between:-90,90'],
+            'longitude' => ['required', 'numeric', 'between:-180,180'],
+            'alamat' => ['nullable', 'string', 'max:1000'],
+
+            // Foto dikirim sebagai multipart/form-data.
+            'photos' => ['required', 'array', 'min:1', 'max:5'],
+            'photos.*' => [
+                'required',
+                'image',
+                'mimes:jpg,jpeg,png,webp',
+                'max:5120',
+            ],
+        ]);
+
+        $storedPaths = [];
+
+        try {
+            // Gunakan koneksi dari model Complaint.
+            $connection = (new Complaint())->getConnection();
+
+            $complaint = $connection->transaction(function () use (
+                $request,
+                $validated,
+                &$storedPaths
+            ) {
+                $userId = $request->user()->getKey();
+
+                // Simpan data pengaduan.
+                $complaint = Complaint::create([
+                    'nomor_pengaduan' => $this->generateComplaintNumber(),
+                    'user_id' => $userId,
+                    'judul' => $validated['judul'],
+                    'isi_pengaduan' => $validated['isi_pengaduan'],
+                    'status' => 'diajukan',
+                    'latitude' => $validated['latitude'],
+                    'longitude' => $validated['longitude'],
+                    'alamat' => $validated['alamat'] ?? null,
+                    'diajukan_pada' => now(),
+                ]);
+
+                // Simpan foto pengaduan.
+                foreach ($request->file('photos', []) as $file) {
+                    $path = $file->store(
+                        'complaints/' . $complaint->id,
+                        'public'
+                    );
+
+                    if (!$path) {
+                        throw new \RuntimeException(
+                            'Foto pengaduan gagal disimpan.'
+                        );
+                    }
+
+                    $storedPaths[] = $path;
+
+                    ComplaintPhoto::create([
+                        'complaint_id' => $complaint->id,
+                        'path' => $path,
+                        'nama_file' => $file->getClientOriginalName(),
+                        'mime_type' => $file->getMimeType(),
+                        'ukuran' => $file->getSize(),
+                    ]);
+                }
+
+                // Simpan riwayat status awal.
+                ComplaintStatusHistory::create([
+                    'complaint_id' => $complaint->id,
+                    'user_id' => $userId,
+                    'status_sebelumnya' => null,
+                    'status_baru' => 'diajukan',
+                    'catatan' => 'Pengaduan dibuat oleh masyarakat.',
+                    'berubah_pada' => now(),
+                ]);
+
+                return $complaint;
+            });
+
+            // Ambil relasi setelah transaksi berhasil.
+            $complaint->load([
+                'category',
+                'unit',
+                'photos',
+                'statusHistories',
+            ]);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Pengaduan berhasil dikirim.',
+                'data' => $complaint,
+            ], 201);
+        } catch (Throwable $e) {
+            // Rollback database tidak otomatis menghapus file.
+            if (!empty($storedPaths)) {
+                Storage::disk('public')->delete($storedPaths);
+            }
+
+            throw $e;
+        }
+    }
+
+    /**
+     * Detail pengaduan.
+     * Pengguna hanya dapat melihat pengaduannya sendiri.
+     */
+    public function show(
+        Request $request,
+        string $id
+    ): JsonResponse {
+        $complaint = Complaint::query()
+            ->where('user_id', $request->user()->id)
+            ->with([
+                'category',
+                'unit',
+                'photos',
+                'statusHistories',
+                'responses' => function ($query) {
+                    $query->where('untuk_publik', true);
+                },
+            ])
+            ->findOrFail($id);
+
+        // Ambil foto bukti hasil penanganan petugas.
+        $evidencePhotos = ComplaintEvidencePhoto::query()
+            ->where('complaint_id', $complaint->id)
+            ->orderBy('created_at')
+            ->get()
+            ->map(function ($photo) {
+                return [
+                    'id' => $photo->id,
+                    'url' => Storage::url($photo->path),
+                    'created_at' => $photo->created_at,
+                ];
+            })
+            ->values();
+
+        // Tambahkan foto bukti ke data detail pengaduan.
+        $data = $complaint->toArray();
+        $data['evidence_photos'] = $evidencePhotos;
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Detail pengaduan berhasil diambil.',
+            'data' => $data,
+        ]);
+    }
+
+
+    /**
+     * Membuat nomor pengaduan yang unik.
+     */
+    private function generateComplaintNumber(): string
+    {
+        do {
+            $number = 'ADU-' . now()->format('Ymd')
+                . '-' . Str::upper(Str::random(6));
+
+            $exists = Complaint::query()
+                ->where('nomor_pengaduan', $number)
+                ->exists();
+        } while ($exists);
+
+        return $number;
+    }
+}

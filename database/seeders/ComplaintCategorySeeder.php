@@ -2,7 +2,7 @@
 
 namespace Database\Seeders;
 
-use App\Models\ComplaintCategory;
+use App\Modules\Pengaduan\Models\ComplaintCategory;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Str;
 

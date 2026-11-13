@@ -1,13 +1,12 @@
 <?php
 
-namespace Database\Seeders;
+namespace Database\Seeders\Pengaduan;
 
 use App\Modules\Pengaduan\Models\User;
 use App\Modules\Pengaduan\Models\Role;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Str;
 use RuntimeException;
 
 class MainAdminSeeder extends Seeder

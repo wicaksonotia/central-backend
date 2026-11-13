@@ -1,6 +1,6 @@
 <?php
 
-namespace Database\Seeders;
+namespace Database\Seeders\Pengaduan;
 
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
@@ -14,7 +14,7 @@ class UnitSeeder extends Seeder
         $units = [
             [
                 'instansi_id' => 1,
-                'parent_id' => 1,
+                'parent_id' => null,
                 'kode' => 'UPT-PKB',
                 'nama' => 'UPT Pengujian Kendaraan Bermotor',
                 'deskripsi' => 'Unit pelaksana pengujian kendaraan bermotor',
@@ -28,28 +28,28 @@ class UnitSeeder extends Seeder
             ],
             [
                 'instansi_id' => 1,
-                'parent_id' => 1,
+                'parent_id' => null,
                 'kode' => 'WASDAL',
                 'nama' => 'Pengawasan dan Pengendalian Lalu Lintas dan Angkutan Jalan',
                 'deskripsi' => 'Mempunyai tugas menjaga ketertiban, keamanan, dan kelancaran lalu lintas',
             ],
             [
                 'instansi_id' => 1,
-                'parent_id' => 1,
+                'parent_id' => null,
                 'kode' => 'LALIN',
                 'nama' => 'Bidang Lalu Lintas',
                 'deskripsi' => 'Mempunyai tugas menyelenggarakan perumusan, pelaksanaan, pengawasan, pengendalian, dan evaluasi di bidang lalu lintas',
             ],
             [
                 'instansi_id' => 1,
-                'parent_id' => 1,
+                'parent_id' => null,
                 'kode' => 'ANGKUTAN',
                 'nama' => 'Bidang Angkutan',
                 'deskripsi' => 'Mempunyai tugas untuk melaksanakan sebagian tugas dinas di bidang angkutan, yang meliputi penyusunan program, pelaksanaan, koordinasi, pengawasan, serta evaluasi urusan transportasi',
             ],
             [
                 'instansi_id' => 1,
-                'parent_id' => 1,
+                'parent_id' => null,
                 'kode' => 'SARPRAS',
                 'nama' => 'Bidang Sarana dan Prasarana Transportasi',
                 'deskripsi' => 'Bertanggung jawab dalam perencanaan, pembangunan, pengembangan, serta pemeliharaan sarana dan prasarana penunjang sistem transportasi, termasuk fasilitas pendukung angkutan massal seperti halte bus, terminal, dan infrastruktur transportasi lainnya',

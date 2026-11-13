@@ -1,6 +1,6 @@
 <?php
 
-namespace Database\Seeders;
+namespace Database\Seeders\Pengaduan;
 
 use App\Modules\Pengaduan\Models\ComplaintCategory;
 use Illuminate\Database\Seeder;
@@ -64,6 +64,7 @@ class ComplaintCategorySeeder extends Seeder
             ComplaintCategory::firstOrCreate(
                 ['slug' => $slug],
                 [
+                    'unit_id' => $category['unit_id'],
                     'nama' => $category['nama'],
                     'deskripsi' => $category['deskripsi'],
                 ]

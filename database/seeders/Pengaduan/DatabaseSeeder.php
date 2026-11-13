@@ -1,15 +1,11 @@
 <?php
 
-namespace Database\Seeders;
+namespace Database\Seeders\Pengaduan;
 
-use App\Modules\Pengaduan\Models\User;
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 
 class DatabaseSeeder extends Seeder
 {
-    use WithoutModelEvents;
-
     /**
      * Seed the application's database.
      */
@@ -18,8 +14,9 @@ class DatabaseSeeder extends Seeder
         $this->call([
             RoleSeeder::class,
             MainAdminSeeder::class,
-            ComplaintCategorySeeder::class,
+            InstansiSeeder::class,
             UnitSeeder::class,
+            ComplaintCategorySeeder::class,
             UserSeeder::class,
             UserRoleSeeder::class,
         ]);

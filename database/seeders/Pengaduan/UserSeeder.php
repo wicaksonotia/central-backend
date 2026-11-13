@@ -1,6 +1,6 @@
 <?php
 
-namespace Database\Seeders;
+namespace Database\Seeders\Pengaduan;
 
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
@@ -16,14 +16,12 @@ class UserSeeder extends Seeder
             // Masyarakat
             // =========================
             [
-                'id' => 3,
                 'name' => 'Masyarakat 1',
                 'email' => 'masyarakat1@example.com',
                 'phone' => '081234567890',
                 'password' => null,
             ],
             [
-                'id' => 10,
                 'name' => 'Masyarakat 2',
                 'email' => 'masyarakat2@example.com',
                 'phone' => '081234567891',
@@ -57,14 +55,12 @@ class UserSeeder extends Seeder
                 'password' => $defaultPassword,
             ],
             [
-                'id' => 5,
                 'name' => 'Admin Unit PKB',
                 'email' => 'admin.pkb@example.com',
                 'phone' => '08113600494',
                 'password' => $defaultPassword,
             ],
             [
-                'id' => 8,
                 'name' => 'Admin Unit Sekretariat',
                 'email' => 'admin.sekretariat@example.com',
                 'phone' => '08113600495',
@@ -92,21 +88,18 @@ class UserSeeder extends Seeder
                 'password' => $defaultPassword,
             ],
             [
-                'id' => 11,
                 'name' => 'Petugas Lapangan Sarpras',
                 'email' => 'petugas.sarpras@example.com',
                 'phone' => '085755124533',
                 'password' => $defaultPassword,
             ],
             [
-                'id' => 6,
                 'name' => 'Petugas Lapangan PKB',
                 'email' => 'petugas.pkb@example.com',
                 'phone' => '085646774334',
                 'password' => $defaultPassword,
             ],
             [
-                'id' => 9,
                 'name' => 'Petugas Lapangan Sekretariat',
                 'email' => 'petugas.sekretariat@example.com',
                 'phone' => '085646774335',

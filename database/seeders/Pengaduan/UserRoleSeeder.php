@@ -1,6 +1,6 @@
 <?php
 
-namespace Database\Seeders;
+namespace Database\Seeders\Pengaduan;
 
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
@@ -12,19 +12,20 @@ class UserRoleSeeder extends Seeder
         $now = now();
 
         $userRoles = [
-            [4, 1, null],
-            [5, 2, 2],
-            [6, 3, 2],
+            // ADMIN UNIT (2)
+            [4, 2, 3],
+            [5, 2, 4],
+            [6, 3, 5],
+            [7, 2, 6],
             [8, 2, 1],
-            [9, 3, 1],
-            [11, 3, 6],
-            [19, 2, 3],
-            [20, 2, 4],
-            [21, 2, 5],
-            [22, 2, 6],
-            [23, 3, 3],
-            [24, 3, 4],
-            [25, 3, 5],
+            [9, 3, 2],
+            // FIELD OFFICER (3)
+            [10, 3, 3],
+            [11, 3, 4],
+            [12, 3, 5],
+            [13, 3, 6],
+            [14, 3, 1],
+            [15, 3, 2],
         ];
 
         foreach ($userRoles as [$userId, $roleId, $unitId]) {

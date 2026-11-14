@@ -3,96 +3,44 @@
 namespace App\Modules\Pengaduan\Controllers;
 
 use App\Http\Controllers\Controller;
-use App\Modules\Pengaduan\Models\PhoneOtp;
 use App\Modules\Pengaduan\Models\User;
-use App\Modules\Pengaduan\Models\UserRole;
-use App\Modules\Pengaduan\Services\UserRoleService;
+use App\Modules\Pengaduan\Services\AuthService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\RateLimiter;
-use Illuminate\Support\Str;
 
 class AuthController extends Controller
 {
-    protected UserRoleService $userRoleService;
-
-    public function __construct(UserRoleService $userRoleService)
-    {
-        $this->userRoleService = $userRoleService;
-    }
+    public function __construct(
+        protected AuthService $authService
+    ) {}
 
     /**
-     * Request OTP untuk login/register menggunakan nomor HP.
+     * Request OTP.
      */
     public function requestOtp(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'phone' => [
-                'required',
-                'string',
-                'max:20',
-            ],
+            'phone' => ['required', 'string', 'max:20'],
         ]);
 
-        $phone = $this->normalizePhone($validated['phone']);
+        $result = $this->authService->requestOtp(
+            $validated['phone']
+        );
 
-        $rateLimitKey = 'otp-request:' . $phone;
-
-        if (RateLimiter::tooManyAttempts($rateLimitKey, 5)) {
-            $seconds = RateLimiter::availableIn($rateLimitKey);
-
+        if (!$result['success']) {
             return response()->json([
                 'status' => false,
-                'message' => "Terlalu banyak permintaan OTP. Coba lagi dalam {$seconds} detik.",
-            ], 429);
+                'message' => $result['message'],
+            ], $result['code']);
         }
-
-        RateLimiter::hit($rateLimitKey, 60);
-
-        $otp = (string) random_int(100000, 999999);
-
-        $connection = (new PhoneOtp())->getConnection();
-
-        $connection->transaction(function () use (
-            $connection,
-            $phone,
-            $otp
-        ) {
-            // Mengunci proses penerbitan OTP untuk nomor HP ini.
-            // PostgreSQL: lock otomatis dilepas saat transaksi selesai.
-            $connection->select(
-                'SELECT pg_advisory_xact_lock(hashtext(?))',
-                [$phone]
-            );
-
-            // Batalkan seluruh OTP sebelumnya yang belum diverifikasi,
-            // termasuk OTP yang sudah kedaluwarsa.
-            PhoneOtp::query()
-                ->where('phone', $phone)
-                ->whereNull('verified_at')
-                ->update([
-                    'verified_at' => now(),
-                ]);
-
-            // Buat OTP baru.
-            PhoneOtp::create([
-                'phone' => $phone,
-                'otp_hash' => Hash::make($otp),
-                'expires_at' => now()->addMinutes(5),
-                'attempts' => 0,
-            ]);
-        });
 
         return response()->json([
             'status' => true,
             'message' => 'OTP berhasil dibuat.',
             'data' => [
-                'phone' => $phone,
-                'expires_in' => 300,
-                'otp' => app()->environment('local')
-                    ? $otp
-                    : null,
+                'phone' => $result['phone'],
+                'expires_in' => $result['expires_in'],
+                'otp' => $result['otp'],
             ],
         ]);
     }
@@ -107,192 +55,50 @@ class AuthController extends Controller
             'otp' => ['required', 'digits:6'],
         ]);
 
-        $phone = $this->normalizePhone($validated['phone']);
+        $result = $this->authService->verifyOtp(
+            $validated['phone'],
+            $validated['otp']
+        );
 
-        $connection = (new PhoneOtp())->getConnection();
-
-        $result = $connection->transaction(function () use (
-            $connection,
-            $phone,
-            $validated
-        ) {
-            // Sinkronisasi request OTP dan verifikasi OTP
-            // berdasarkan nomor HP yang sama.
-            $connection->select(
-                'SELECT pg_advisory_xact_lock(hashtext(?))',
-                [$phone]
-            );
-
-            // Ambil OTP terbaru yang belum diverifikasi.
-            $otpRecord = PhoneOtp::query()
-                ->where('phone', $phone)
-                ->whereNull('verified_at')
-                ->latest('id')
-                ->lockForUpdate()
-                ->first();
-
-            if (!$otpRecord) {
-                return [
-                    'error' => 'OTP tidak ditemukan. Silakan minta OTP baru.',
-                    'code' => 422,
-                ];
-            }
-
-            if ($otpRecord->expires_at->isPast()) {
-                return [
-                    'error' => 'OTP sudah kedaluwarsa. Silakan minta OTP baru.',
-                    'code' => 422,
-                ];
-            }
-
-            if ($otpRecord->attempts >= 5) {
-                return [
-                    'error' => 'Batas percobaan OTP sudah habis. Silakan minta OTP baru.',
-                    'code' => 422,
-                ];
-            }
-
-            // Tambah jumlah percobaan sebelum memeriksa OTP.
-            $otpRecord->increment('attempts');
-
-            if (!Hash::check($validated['otp'], $otpRecord->otp_hash)) {
-                return [
-                    'error' => 'OTP tidak valid.',
-                    'code' => 422,
-                ];
-            }
-
-            // Tandai OTP berhasil diverifikasi.
-            $otpRecord->update([
-                'verified_at' => now(),
-            ]);
-
-            // Cari user berdasarkan nomor HP.
-            $user = User::query()
-                ->where('phone', $phone)
-                ->first();
-
-            // Buat user jika belum terdaftar.
-            if (!$user) {
-                $user = User::create([
-                    'name' => 'Pengguna',
-                    'phone' => $phone,
-                    'phone_verified_at' => now(),
-                ]);
-            } else {
-                $user->update([
-                    'phone_verified_at' => now(),
-                ]);
-            }
-
-            // Pastikan user memiliki tepat satu role aktif.
-            // Jika belum memiliki role aktif, berikan role masyarakat.
-            $this->userRoleService->assignDefaultRole($user);
-
-            return [
-                'user' => $user,
-            ];
-        });
-
-        // Jika verifikasi gagal, kembalikan pesan error.
-        if (isset($result['error'])) {
+        if (!$result['success']) {
             return response()->json([
                 'status' => false,
-                'message' => $result['error'],
+                'message' => $result['message'],
             ], $result['code']);
         }
-
-        $user = $result['user'];
-
-        // Buat token setelah seluruh transaksi berhasil.
-        $token = $user->createToken('flutter-app')->plainTextToken;
 
         return response()->json([
             'status' => true,
             'message' => 'Login berhasil.',
             'data' => [
-                'user' => $user->fresh(),
-                'token' => $token,
-                'profile_completed' => $user->profile_completed_at !== null,
+                'user' => $result['user'],
+                'token' => $result['token'],
+                'profile_completed' => $result['profile_completed'],
             ],
         ]);
     }
 
     /**
-     * Normalisasi dan validasi nomor HP Indonesia.
-     * Input	Hasil
-     * 081234567890	081234567890
-     * +6281234567890	081234567890
-     * 6281234567890	081234567890
-     * 0812-3456-7890	081234567890
-     * 123456	Ditolak
+     * Profil pengguna.
      */
-    private function normalizePhone(string $phone): string
-    {
-        $phone = preg_replace('/[\s\-\(\)]/', '', trim($phone));
-
-        if (Str::startsWith($phone, '+62')) {
-            $phone = '0' . substr($phone, 3);
-        } elseif (Str::startsWith($phone, '62')) {
-            $phone = '0' . substr($phone, 2);
-        }
-
-        if (!preg_match('/^08[1-9][0-9]{7,11}$/', $phone)) {
-            throw \Illuminate\Validation\ValidationException::withMessages([
-                'phone' => ['Format nomor HP Indonesia tidak valid.'],
-            ]);
-        }
-
-        return $phone;
-    }
-
     public function me(Request $request): JsonResponse
     {
+        /** @var User $user */
         $user = $request->user();
-
-        $userRoles = UserRole::query()
-            ->active()
-            ->where('user_id', $user->id)
-            ->with([
-                'role:id,nama,kode',
-                'unit:id,nama,instansi_id',
-                'unit.instansi:id,nama',
-            ])
-            ->get();
 
         return response()->json([
             'status' => true,
             'message' => 'Data pengguna berhasil diambil.',
-            'data' => [
-                'user' => [
-                    'id' => $user->id,
-                    'name' => $user->name,
-                    'email' => $user->email,
-                    'phone' => $user->phone,
-                    'avatar' => $user->avatar,
-                    'profile_completed_at' => $user->profile_completed_at,
-
-                    'roles' => $userRoles->map(function ($userRole) {
-                        $role = $userRole->role;
-                        $unit = $userRole->unit;
-
-                        return [
-                            'id' => $role?->id,
-                            'nama' => $role?->nama,
-                            'kode' => $role?->kode,
-                            'unit_id' => $userRole->unit_id,
-                            'unit_nama' => $unit?->nama,
-                            'instansi_id' => $unit?->instansi_id,
-                            'instansi_nama' => $unit?->instansi?->nama,
-                        ];
-                    })->values(),
-                ],
-            ],
+            'data' => $this->authService->me($user),
         ]);
     }
 
-    public function updateProfile(Request $request)
+    /**
+     * Update profil.
+     */
+    public function updateProfile(Request $request): JsonResponse
     {
+        /** @var User $user */
         $user = $request->user();
 
         $validated = $request->validate([
@@ -305,30 +111,29 @@ class AuthController extends Controller
             ],
         ]);
 
-        $user->update([
-            'name' => $validated['name'],
-            'email' => $validated['email'] ?? null,
-            'profile_completed_at' => now(),
-        ]);
+        $updatedUser = $this->authService->updateProfile(
+            $user,
+            $validated
+        );
 
         return response()->json([
             'status' => true,
             'message' => 'Profile berhasil diperbarui.',
             'data' => [
-                'user' => $user->fresh(),
+                'user' => $updatedUser,
             ],
         ]);
     }
 
     /**
-     * Logout pengguna.
-     * Menghapus token perangkat yang sedang digunakan.
+     * Logout.
      */
     public function logout(Request $request): JsonResponse
     {
-        $request->user()
-            ->currentAccessToken()
-            ?->delete();
+        /** @var User $user */
+        $user = $request->user();
+
+        $this->authService->logout($user);
 
         return response()->json([
             'status' => true,

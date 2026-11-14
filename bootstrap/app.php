@@ -5,7 +5,9 @@ use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
 
-use App\Modules\Pengaduan\Middleware\EnsureMainAdmin;
+use App\Modules\Pengaduan\Middleware\EnsurePengaduanAdmin;
+use App\Modules\Posyandu\Middleware\EnsurePosyanduAdmin;
+use App\Modules\Posyandu\Middleware\EnsurePosyanduUser;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -16,7 +18,9 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
-            'main.admin' => EnsureMainAdmin::class,
+            'pengaduan.admin' => EnsurePengaduanAdmin::class,
+            'posyandu.user' => EnsurePosyanduUser::class,
+            'posyandu.admin' => EnsurePosyanduAdmin::class,
         ]);
 
         // $middleware->redirectGuests(

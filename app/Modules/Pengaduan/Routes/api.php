@@ -25,10 +25,12 @@ Route::prefix('v1/pengaduan')->group(function () {
         ]);
     });
     // Autentikasi
-    Route::prefix('auth')->group(function () {
-        Route::post('/phone/request-otp', [AuthController::class, 'requestOtp']);
-        Route::post('/phone/verify-otp', [AuthController::class, 'verifyOtp']);
-    });
+    Route::prefix('auth')
+        ->controller(AuthController::class)
+        ->group(function () {
+            Route::post('/phone/request-otp', 'requestOtp');
+            Route::post('/phone/verify-otp', 'verifyOtp');
+        });
 
     // =====================================================
     // BERITA & PENGUMUMAN - PUBLIC
@@ -45,8 +47,7 @@ Route::prefix('v1/pengaduan')->group(function () {
     ])->whereNumber('id');
 
     // Pengguna yang sudah login
-    Route::middleware('auth:sanctum')->group(function () {
-
+    Route::middleware('auth:pengaduan')->group(function () {
         Route::get('/me', [AuthController::class, 'me']);
         Route::put('/me', [AuthController::class, 'updateProfile']);
         Route::post('/auth/logout', [AuthController::class, 'logout']);
@@ -62,7 +63,7 @@ Route::prefix('v1/pengaduan')->group(function () {
 
         // Admin utama
         Route::prefix('admin')
-            ->middleware('main.admin')
+            ->middleware('pengaduan.admin')
             ->group(function () {
 
                 // Manajemen instansi

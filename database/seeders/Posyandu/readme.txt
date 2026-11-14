@@ -6,4 +6,11 @@ php artisan make:seeder Posyandu/PosPemeriksaanSeeder
 php artisan make:seeder Posyandu/KelompokSasaranSeeder
 php artisan make:seeder Posyandu/JenisPemeriksaanSeeder
 php artisan make:seeder Posyandu/MasterKeluhanSeeder
+php artisan make:seeder Posyandu/DesaSeeder
 php artisan make:seeder Posyandu/PosyanduSeeder
+php artisan make:seeder Posyandu/AdminPosyanduSeeder
+php artisan make:seeder Posyandu/PetugasKaderSeeder
+
+php artisan db:seed \
+  --database=posyandu \
+  --class="Database\\Seeders\\Posyandu\\PosyanduSeeder"

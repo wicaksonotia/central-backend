@@ -1,0 +1,12 @@
+- [ ] Struktur tabel users, roles, units, dan user_roles.
+- [ ] Relasi Eloquent beserta koneksi database pengaduan.
+- [ ] Sistem satu user hanya boleh memiliki satu role aktif.
+- [ ] Riwayat penugasan user tetap tersimpan.
+- [ ] Penonaktifan dan pengaktifan kembali penugasan.
+- [ ] Pemindahan user antar-role dan antar-unit.
+- [ ] CRUD Admin Unit oleh Admin Utama.
+- [ ] CRUD Field Officer oleh Admin Utama.
+- [ ] CRUD Field Officer oleh Admin Unit sesuai kewenangan unit.
+- [ ] Login OTP dan pembuatan role default masyarakat.
+- [ ] Logout dan pembahasan pencabutan token ketika penugasan dinonaktifkan atau dipindahkan.
+- [ ] Middleware EnsureMainAdmin.

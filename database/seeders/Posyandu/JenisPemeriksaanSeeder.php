@@ -49,8 +49,15 @@ class JenisPemeriksaanSeeder extends Seeder
                 ],
             ],
             [
-                'kode' => 'TENSI',
-                'nama' => 'Tekanan Darah',
+                'kode' => 'TENSIS',
+                'nama' => 'Tekanan Darah Sistolik',
+                'pos' => 'POS-03',
+                'satuan' => 'mmHg',
+                'kelompok' => ['DEWASA', 'LANSIA'],
+            ],
+            [
+                'kode' => 'TENSID',
+                'nama' => 'Tekanan Darah Diastolik',
                 'pos' => 'POS-03',
                 'satuan' => 'mmHg',
                 'kelompok' => ['DEWASA', 'LANSIA'],

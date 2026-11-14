@@ -13,6 +13,10 @@ class DatabaseSeeder extends Seeder
             KelompokSasaranSeeder::class,
             JenisPemeriksaanSeeder::class,
             MasterKeluhanSeeder::class,
+            DesaSeeder::class,
+            PosyanduSeeder::class,
+            AdminPosyanduSeeder::class,
+            PetugasKaderSeeder::class,
         ]);
     }
 }

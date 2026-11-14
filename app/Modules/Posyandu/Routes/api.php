@@ -4,6 +4,7 @@ use App\Modules\Posyandu\Controllers\AuthController;
 use App\Modules\Posyandu\Controllers\AntrianController;
 use App\Modules\Posyandu\Controllers\KunjunganController;
 use App\Modules\Posyandu\Controllers\PemeriksaanController;
+use App\Modules\Posyandu\Controllers\PosyanduPosController;
 use App\Modules\Posyandu\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
 
@@ -52,27 +53,28 @@ Route::prefix('v1/posyandu')->group(function () {
             ->middleware('posyandu.admin')
             ->group(function () {
 
-                // User / Kader Management
-                Route::prefix('users')
-                    ->controller(UserController::class)
-                    ->group(function () {
-                        Route::get('/', 'index');
-                        Route::post('/', 'store');
-                        Route::get('/{userId}', 'show');
-                        Route::put('/{userId}', 'update');
-                        Route::delete('/{userId}', 'destroy');
-                        Route::post('/{userId}/activate', 'activate');
-                    });
+                // Manajemen kader
+                Route::apiResource('users', UserController::class)
+                    ->only(['index', 'store', 'show', 'update', 'destroy']);
+
+                Route::post('users/{userId}/activate', [
+                    UserController::class,
+                    'activate'
+                ]);
+
+                Route::controller(PosyanduPosController::class)->group(function () {
+                    Route::get('/pos', 'index');
+                    Route::put('/pos', 'update');
+                });
             });
 
         // =================================================
         // KUNJUNGAN
         // =================================================
 
-        Route::post(
-            '/kunjungan',
-            [KunjunganController::class, 'store']
-        );
+        Route::controller(KunjunganController::class)->group(function () {
+            Route::post('/kunjungan', 'store');
+        });
 
         // =================================================
         // ANTRIAN

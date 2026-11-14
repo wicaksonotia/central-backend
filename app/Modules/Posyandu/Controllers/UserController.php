@@ -91,7 +91,7 @@ class UserController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'phone' => ['required', 'string', 'max:20'],
             'email' => ['nullable', 'email', 'max:255'],
-            'posyandu_pos_ids' => ['sometimes', 'array'],
+            'posyandu_pos_ids' => ['sometimes', 'array', 'min:1'],
             'posyandu_pos_ids.*' => ['required', 'integer', 'distinct'],
         ]);
 
@@ -148,7 +148,7 @@ class UserController extends Controller
             'name' => ['sometimes', 'required', 'string', 'max:255'],
             'phone' => ['sometimes', 'required', 'string', 'max:20'],
             'email' => ['sometimes', 'nullable', 'email', 'max:255'],
-            'posyandu_pos_ids' => ['sometimes', 'array'],
+            'posyandu_pos_ids' => ['sometimes', 'array', 'min:1'],
             'posyandu_pos_ids.*' => ['required', 'integer', 'distinct'],
         ]);
 
@@ -187,7 +187,7 @@ class UserController extends Controller
     public function activate(Request $request, int $userId)
     {
         $validated = $request->validate([
-            'posyandu_pos_ids' => ['sometimes', 'array'],
+            'posyandu_pos_ids' => ['sometimes', 'array', 'min:1'],
             'posyandu_pos_ids.*' => ['required', 'integer', 'distinct'],
         ]);
 

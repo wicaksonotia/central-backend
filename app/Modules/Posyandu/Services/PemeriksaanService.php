@@ -5,11 +5,16 @@ namespace App\Modules\Posyandu\Services;
 use App\Modules\Posyandu\Models\KunjunganPos;
 use App\Modules\Posyandu\Models\JenisPemeriksaan;
 use App\Modules\Posyandu\Models\Pemeriksaan;
+use App\Modules\Posyandu\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class PemeriksaanService
 {
+    public function __construct(
+        protected PetugasContextService $petugasContext
+    ) {}
+
     /**
      * Menyimpan beberapa hasil pemeriksaan sekaligus.
      */
@@ -24,7 +29,10 @@ class PemeriksaanService
             $userId
         ) {
             $kunjunganPos = KunjunganPos::query()
-                ->with('posyanduPos')
+                ->with([
+                    'kunjungan.kegiatan',
+                    'posyanduPos',
+                ])
                 ->whereKey($kunjunganPosId)
                 ->lockForUpdate()
                 ->firstOrFail();
@@ -43,14 +51,28 @@ class PemeriksaanService
                 ]);
             }
 
-            // Pastikan petugas memiliki penugasan pada pos ini.
+            $user = User::query()->findOrFail($userId);
+
             $petugasPosyanduId = $this->cariPetugas(
-                $userId,
-                $kunjunganPosId
+                $user,
+                $kunjunganPos
             );
 
+            // Validasi kombinasi jenis pemeriksaan dan nomor pengukuran.
+            $kombinasi = collect($data)->map(function ($item) {
+                $jenisId = $item['jenis_pemeriksaan_id'] ?? '';
+                $pengukuranKe = $item['pengukuran_ke'] ?? 1;
+
+                return $jenisId . '-' . $pengukuranKe;
+            });
+
+            if ($kombinasi->unique()->count() !== $kombinasi->count()) {
+                throw ValidationException::withMessages([
+                    'pemeriksaan' => 'Jenis pemeriksaan dan nomor pengukuran tidak boleh duplikat.',
+                ]);
+            }
+
             foreach ($data as $item) {
-                // Jenis pemeriksaan tetap mengacu ke master pos_pemeriksaan.
                 $jenis = JenisPemeriksaan::query()
                     ->whereKey($item['jenis_pemeriksaan_id'])
                     ->where(
@@ -69,13 +91,19 @@ class PemeriksaanService
                 $nilaiNumerik = $item['nilai_numerik'] ?? null;
                 $nilaiTeks = $item['nilai_teks'] ?? null;
 
-                if ($jenis->tipe_nilai === 'numeric' && $nilaiNumerik === null) {
+                if (
+                    $jenis->tipe_nilai === 'numeric' &&
+                    $nilaiNumerik === null
+                ) {
                     throw ValidationException::withMessages([
                         'pemeriksaan' => "Nilai numerik untuk {$jenis->nama} wajib diisi.",
                     ]);
                 }
 
-                if ($jenis->tipe_nilai !== 'numeric' && blank($nilaiTeks)) {
+                if (
+                    $jenis->tipe_nilai !== 'numeric' &&
+                    blank($nilaiTeks)
+                ) {
                     throw ValidationException::withMessages([
                         'pemeriksaan' => "Nilai teks untuk {$jenis->nama} wajib diisi.",
                     ]);
@@ -113,6 +141,7 @@ class PemeriksaanService
         $kunjunganPos = KunjunganPos::query()
             ->with([
                 'kunjungan.warga',
+                'kunjungan.kegiatan',
                 'posyanduPos.posPemeriksaan',
                 'pemeriksaan',
             ])
@@ -126,17 +155,20 @@ class PemeriksaanService
             ]);
         }
 
-        // Validasi hak akses Admin atau Kader.
-        $this->cariPetugas($userId, $kunjunganPosId);
+        $user = User::query()->findOrFail($userId);
 
-        // Jenis pemeriksaan tetap diambil dari master pos pemeriksaan.
+        // Validasi hak akses Admin atau Kader.
+        $this->cariPetugas($user, $kunjunganPos);
+
         $jenisPemeriksaan = JenisPemeriksaan::query()
-            ->where('pos_pemeriksaan_id', $posyanduPos->pos_pemeriksaan_id)
+            ->where(
+                'pos_pemeriksaan_id',
+                $posyanduPos->pos_pemeriksaan_id
+            )
             ->where('status', true)
             ->orderBy('id')
             ->get();
 
-        // Kelompokkan hasil yang sudah tersimpan berdasarkan jenis pemeriksaan.
         $hasilPemeriksaan = $kunjunganPos->pemeriksaan
             ->groupBy('jenis_pemeriksaan_id');
 
@@ -170,110 +202,69 @@ class PemeriksaanService
                 'urutan' => $posyanduPos->urutan,
             ],
 
-            'jenis_pemeriksaan' => $jenisPemeriksaan->map(function ($jenis) use ($hasilPemeriksaan) {
-                $hasil = $hasilPemeriksaan->get($jenis->id, collect());
+            'jenis_pemeriksaan' => $jenisPemeriksaan
+                ->map(function ($jenis) use ($hasilPemeriksaan) {
+                    $hasil = $hasilPemeriksaan->get(
+                        $jenis->id,
+                        collect()
+                    );
 
-                return [
-                    'id' => $jenis->id,
-                    'kode' => $jenis->kode,
-                    'nama' => $jenis->nama,
-                    'satuan' => $jenis->satuan,
-                    'tipe_nilai' => $jenis->tipe_nilai,
-                    'wajib' => $jenis->wajib,
-                    'keterangan' => $jenis->keterangan,
+                    return [
+                        'id' => $jenis->id,
+                        'kode' => $jenis->kode,
+                        'nama' => $jenis->nama,
+                        'satuan' => $jenis->satuan,
+                        'tipe_nilai' => $jenis->tipe_nilai,
+                        'wajib' => $jenis->wajib,
+                        'keterangan' => $jenis->keterangan,
 
-                    'hasil' => $hasil->map(function ($item) {
-                        return [
-                            'id' => $item->id,
-                            'pengukuran_ke' => $item->pengukuran_ke,
-                            'nilai_numerik' => $item->nilai_numerik,
-                            'nilai_teks' => $item->nilai_teks,
-                            'keterangan' => $item->keterangan,
-                            'waktu_pemeriksaan' => $item->waktu_pemeriksaan,
-                        ];
-                    })->values(),
-                ];
-            })->values(),
+                        'hasil' => $hasil->map(function ($item) {
+                            return [
+                                'id' => $item->id,
+                                'pengukuran_ke' => $item->pengukuran_ke,
+                                'nilai_numerik' => $item->nilai_numerik,
+                                'nilai_teks' => $item->nilai_teks,
+                                'keterangan' => $item->keterangan,
+                                'waktu_pemeriksaan' => $item->waktu_pemeriksaan,
+                            ];
+                        })->values(),
+                    ];
+                })
+                ->values(),
         ];
     }
 
     /**
-     * Mencari petugas yang berhak melakukan pemeriksaan.
+     * Memastikan petugas memiliki akses ke POS kunjungan.
      */
     private function cariPetugas(
-        int $userId,
-        int $kunjunganPosId
+        User $user,
+        KunjunganPos $kunjunganPos
     ): int {
-        $context = DB::connection('posyandu')
-            ->table('kunjungan_pos')
-            ->join(
-                'kunjungan',
-                'kunjungan.id',
-                '=',
-                'kunjungan_pos.kunjungan_id'
-            )
-            ->join(
-                'kegiatan_posyandu',
-                'kegiatan_posyandu.id',
-                '=',
-                'kunjungan.kegiatan_id'
-            )
-            ->join(
-                'posyandu_pos',
-                'posyandu_pos.id',
-                '=',
-                'kunjungan_pos.posyandu_pos_id'
-            )
-            ->where('kunjungan_pos.id', $kunjunganPosId)
-            ->select(
-                'kegiatan_posyandu.posyandu_id',
-                'posyandu_pos.id as posyandu_pos_id',
-                'posyandu_pos.status as pos_status',
-                'posyandu_pos.posyandu_id as posyandu_pos_posyandu_id'
-            )
-            ->first();
+        $kegiatan = $kunjunganPos->kunjungan?->kegiatan;
+        $posyanduPos = $kunjunganPos->posyanduPos;
 
-        if (
-            !$context ||
-            !$context->pos_status ||
-            (int) $context->posyandu_id !== (int) $context->posyandu_pos_posyandu_id
-        ) {
+        if (!$kegiatan || !$posyanduPos) {
             throw ValidationException::withMessages([
                 'kunjungan_pos' => 'Data kunjungan atau konfigurasi pos tidak valid.',
             ]);
         }
 
-        // Ambil penugasan petugas pada Posyandu terkait.
-        $petugas = DB::connection('posyandu')
-            ->table('petugas_posyandu')
-            ->where('user_id', $userId)
-            ->where('posyandu_id', $context->posyandu_id)
-            ->where('status', true)
-            ->first();
-
-        if (!$petugas) {
+        if (
+            (int) $kegiatan->posyandu_id !==
+            (int) $posyanduPos->posyandu_id
+        ) {
             throw ValidationException::withMessages([
-                'petugas' => 'Anda tidak memiliki penugasan pada Posyandu ini.',
+                'kunjungan_pos' => 'Pos pemeriksaan tidak sesuai dengan Posyandu kegiatan.',
             ]);
         }
 
-        // Admin dapat melakukan pemeriksaan di semua pos aktif.
-        // Kader hanya dapat melakukan pemeriksaan di pos yang ditugaskan.
-        if ($petugas->peran !== 'admin') {
-            $hasAccess = DB::connection('posyandu')
-                ->table('petugas_posyandu_pos')
-                ->where('petugas_posyandu_id', $petugas->id)
-                ->where('posyandu_pos_id', $context->posyandu_pos_id)
-                ->where('status', true)
-                ->exists();
+        $assignment = $this->petugasContext->authorizePosPemeriksaan(
+            $user,
+            (int) $kegiatan->posyandu_id,
+            (int) $posyanduPos->id
+        );
 
-            if (!$hasAccess) {
-                throw ValidationException::withMessages([
-                    'petugas' => 'Anda tidak memiliki penugasan pada pos pemeriksaan ini.',
-                ]);
-            }
-        }
-
-        return (int) $petugas->id;
+        return (int) $assignment->id;
     }
 }

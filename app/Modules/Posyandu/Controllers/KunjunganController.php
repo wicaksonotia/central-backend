@@ -26,7 +26,7 @@ class KunjunganController extends Controller
         $kunjungan = $this->kunjunganService->daftarWarga(
             kegiatanId: $validated['kegiatan_id'],
             wargaId: $validated['warga_id'],
-            userId: $request->user()?->id
+            user: $request->user('posyandu')
         );
 
         return response()->json([

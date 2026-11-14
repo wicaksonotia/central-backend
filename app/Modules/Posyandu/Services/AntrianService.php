@@ -4,6 +4,7 @@ namespace App\Modules\Posyandu\Services;
 
 use App\Modules\Posyandu\Models\User;
 use App\Modules\Posyandu\Models\KegiatanPosyandu;
+use App\Modules\Posyandu\Models\Kunjungan;
 use App\Modules\Posyandu\Models\PosyanduPos;
 use App\Modules\Posyandu\Models\KunjunganPos;
 use App\Modules\Posyandu\Models\Pemeriksaan;
@@ -74,10 +75,16 @@ class AntrianService
                 $posyanduPosId
             );
 
-            PosyanduPos::query()
+            $pos = PosyanduPos::query()
                 ->whereKey($posyanduPosId)
                 ->lockForUpdate()
                 ->firstOrFail();
+
+            if (!$pos->status) {
+                throw ValidationException::withMessages([
+                    'posyandu_pos_id' => 'Pos pemeriksaan sudah tidak aktif.',
+                ]);
+            }
 
             $antrian = $this->ambilAntrian(
                 $kegiatanId,
@@ -274,7 +281,7 @@ class AntrianService
                 throw ValidationException::withMessages([
                     'pemeriksaan' => [
                         'Pemeriksaan berikut belum diisi: '
-                        . implode(', ', $belumDiisi),
+                            . implode(', ', $belumDiisi),
                     ],
                 ]);
             }
@@ -283,6 +290,24 @@ class AntrianService
                 'status' => 'completed',
                 'waktu_selesai' => now(),
             ]);
+
+            // Periksa apakah seluruh POS pada kunjungan sudah selesai.
+            $kunjungan = Kunjungan::query()
+                ->whereKey($kunjunganPos->kunjungan_id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $masihAdaAntrian = KunjunganPos::query()
+                ->where('kunjungan_id', $kunjungan->id)
+                ->where('status', '!=', 'completed')
+                ->exists();
+
+            // Jika seluruh POS selesai, selesaikan kunjungan.
+            if (!$masihAdaAntrian && $kunjungan->status !== 'selesai') {
+                $kunjungan->update([
+                    'status' => 'selesai',
+                ]);
+            }
 
             return $kunjunganPos->fresh([
                 'kunjungan.warga',

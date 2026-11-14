@@ -10,32 +10,26 @@ class KunjunganPos extends PosyanduModel
 
     public function kunjungan()
     {
-        return $this->belongsTo(Kunjungan::class);
+        return $this->belongsTo(Kunjungan::class, 'kunjungan_id');
     }
 
     public function posyanduPos()
     {
-        return $this->belongsTo(
-            PosyanduPos::class,
-            'posyandu_pos_id'
-        );
+        return $this->belongsTo(PosyanduPos::class, 'posyandu_pos_id');
     }
 
     public function petugasPosyandu()
     {
-        return $this->belongsTo(
-            PetugasPosyandu::class,
-            'petugas_posyandu_id'
-        );
+        return $this->belongsTo(PetugasPosyandu::class, 'petugas_posyandu_id');
     }
 
     public function pemeriksaan()
     {
-        return $this->hasMany(Pemeriksaan::class);
+        return $this->hasMany(Pemeriksaan::class, 'kunjungan_pos_id');
     }
 
     public function pemeriksaanKeluhan()
     {
-        return $this->hasMany(PemeriksaanKeluhan::class);
+        return $this->hasMany(PemeriksaanKeluhan::class, 'kunjungan_pos_id');
     }
 }

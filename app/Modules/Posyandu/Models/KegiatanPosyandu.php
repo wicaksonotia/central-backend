@@ -5,7 +5,7 @@ namespace App\Modules\Posyandu\Models;
 class KegiatanPosyandu extends PosyanduModel
 {
     protected $connection = 'posyandu';
-    
+
     protected $table = 'kegiatan_posyandu';
 
     protected function casts(): array

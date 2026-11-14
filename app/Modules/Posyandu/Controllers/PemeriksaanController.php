@@ -52,13 +52,6 @@ class PemeriksaanController extends Controller
 
         $user = $request->user('posyandu');
 
-        if (!$user) {
-            return response()->json([
-                'status' => false,
-                'message' => 'Unauthenticated.',
-            ], 401);
-        }
-
         $data = $this->pemeriksaanService->simpan(
             $kunjunganPosId,
             $validated['pemeriksaan'],
@@ -80,13 +73,6 @@ class PemeriksaanController extends Controller
         int $kunjunganPosId
     ): JsonResponse {
         $user = $request->user('posyandu');
-
-        if (!$user) {
-            return response()->json([
-                'status' => false,
-                'message' => 'Unauthenticated.',
-            ], 401);
-        }
 
         $data = $this->pemeriksaanService->detail(
             $kunjunganPosId,

@@ -7,6 +7,7 @@ use App\Modules\Posyandu\Models\Kunjungan;
 use App\Modules\Posyandu\Models\KunjunganPos;
 use App\Modules\Posyandu\Models\KelompokSasaran;
 use App\Modules\Posyandu\Models\PosyanduPos;
+use App\Modules\Posyandu\Models\User;
 use App\Modules\Posyandu\Models\Warga;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -14,15 +15,23 @@ use Illuminate\Validation\ValidationException;
 
 class KunjunganService
 {
+    public function __construct(
+        protected PetugasContextService $petugasContext
+    ) {}
+
+    /**
+     * Mendaftarkan warga ke kegiatan Posyandu
+     * sekaligus membentuk antrean pemeriksaan.
+     */
     public function daftarWarga(
         int $kegiatanId,
         int $wargaId,
-        ?int $userId = null
+        User $user
     ): Kunjungan {
         return DB::connection('posyandu')->transaction(function () use (
             $kegiatanId,
             $wargaId,
-            $userId
+            $user
         ) {
             // Ambil kegiatan dan kunci selama proses pendaftaran.
             $kegiatan = KegiatanPosyandu::query()
@@ -30,7 +39,20 @@ class KunjunganService
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            // Pastikan warga tersedia.
+            // Pastikan petugas bertugas pada Posyandu kegiatan.
+            $this->petugasContext->petugasAssignment(
+                $user,
+                (int) $kegiatan->posyandu_id
+            );
+
+            // Pastikan kegiatan sudah dipublikasikan.
+            if ($kegiatan->status !== 'published') {
+                throw ValidationException::withMessages([
+                    'kegiatan_id' => 'Pendaftaran hanya dapat dilakukan pada kegiatan yang sudah dipublikasikan.',
+                ]);
+            }
+
+            // Ambil data warga.
             $warga = Warga::query()
                 ->whereKey($wargaId)
                 ->firstOrFail();
@@ -87,16 +109,7 @@ class KunjunganService
                 ]);
             }
 
-            // Buat data kunjungan.
-            $kunjungan = Kunjungan::create([
-                'kegiatan_id' => $kegiatanId,
-                'warga_id' => $wargaId,
-                'nomor_antrian' => $nomorAntrian,
-                'status' => 'berlangsung',
-                'created_by' => $userId,
-            ]);
-
-            // Ambil master pos berdasarkan jenis pemeriksaan
+            // Ambil master POS berdasarkan jenis pemeriksaan
             // yang berlaku untuk kelompok usia warga.
             $posPemeriksaanIds = DB::connection('posyandu')
                 ->table('jenis_pemeriksaan')
@@ -120,7 +133,7 @@ class KunjunganService
                 )
                 ->distinct()
                 ->pluck('pos_pemeriksaan.id')
-                ->map(fn ($id) => (int) $id)
+                ->map(fn($id) => (int) $id)
                 ->all();
 
             // POS-04 (Pencatatan dan Keluhan) berlaku
@@ -139,7 +152,7 @@ class KunjunganService
                 array_unique($posPemeriksaanIds)
             );
 
-            // Ambil konfigurasi pos aktif milik Posyandu kegiatan.
+            // Ambil konfigurasi POS aktif milik Posyandu kegiatan.
             // Urutan mengikuti konfigurasi masing-masing Posyandu.
             $daftarPos = PosyanduPos::query()
                 ->where('posyandu_id', $kegiatan->posyandu_id)
@@ -148,14 +161,23 @@ class KunjunganService
                 ->orderBy('urutan')
                 ->get();
 
-            // Pastikan tersedia pos pemeriksaan untuk kunjungan.
+            // Pastikan tersedia POS pemeriksaan untuk kunjungan.
             if ($daftarPos->isEmpty()) {
                 throw ValidationException::withMessages([
                     'posyandu_pos' => 'Belum ada pos pemeriksaan aktif yang sesuai dengan kelompok usia warga.',
                 ]);
             }
 
-            // Buat antrean pada setiap pos yang berlaku.
+            // Buat data kunjungan.
+            $kunjungan = Kunjungan::create([
+                'kegiatan_id' => $kegiatanId,
+                'warga_id' => $wargaId,
+                'nomor_antrian' => $nomorAntrian,
+                'status' => 'berlangsung',
+                'created_by' => $user->id,
+            ]);
+
+            // Buat antrean pada setiap POS yang berlaku.
             foreach ($daftarPos as $pos) {
                 KunjunganPos::create([
                     'kunjungan_id' => $kunjungan->id,

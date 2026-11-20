@@ -47,4 +47,8 @@ php artisan make:migration create_posyandu_pos_table --path=database/migrations/
 php artisan make:migration add_posyandu_pos_id_to_petugas_posyandu_pos_table --path=database/migrations/Posyandu
 php artisan make:migration add_posyandu_pos_id_to_kunjungan_pos_table --path=database/migrations/Posyandu
 
+php artisan make:migration create_puskesmas_table --path=database/migrations/Posyandu
+php artisan make:migration create_puskesmas_desa_table --path=database/migrations/Posyandu
+php artisan make:migration create_puskesmas_user_table --path=database/migrations/Posyandu
+
 php artisan make:migration create_phone_otp_table --path=database/migrations/Posyandu

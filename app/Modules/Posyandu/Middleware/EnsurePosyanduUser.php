@@ -13,10 +13,19 @@ class EnsurePosyanduUser
         Request $request,
         Closure $next
     ): Response {
-        if (!$request->user() instanceof User) {
+        $user = $request->user('posyandu');
+
+        if (!$user instanceof User || !$user->is_active) {
             return response()->json([
-                'status' => false,
-                'message' => 'Akses khusus pengguna Posyandu.',
+                'success' => false,
+                'message' => 'Akses pengguna tidak valid.',
+            ], 403);
+        }
+
+        if (!$user->hasActiveAccess()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Anda tidak memiliki penugasan aktif.',
             ], 403);
         }
 

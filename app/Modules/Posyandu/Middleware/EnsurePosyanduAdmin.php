@@ -8,8 +8,10 @@ use Symfony\Component\HttpFoundation\Response;
 
 class EnsurePosyanduAdmin
 {
-    public function handle(Request $request, Closure $next): Response
-    {
+    public function handle(
+        Request $request,
+        Closure $next
+    ): Response {
         $user = $request->user('posyandu');
 
         if (!$user) {
@@ -19,9 +21,11 @@ class EnsurePosyanduAdmin
             ], 401);
         }
 
-        $isAdmin = $user->petugasPosyandu()
-            ->where('status', true)
-            ->where('peran', 'admin')
+        $isAdmin = $user->petugasPosyanduAktif()
+            ->where('peran', 'admin_posyandu')
+            ->whereHas('posyandu', function ($query) {
+                $query->where('status', true);
+            })
             ->exists();
 
         if (!$isAdmin) {

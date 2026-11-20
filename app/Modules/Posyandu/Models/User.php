@@ -45,4 +45,43 @@ class User extends Authenticatable
     {
         return $this->hasMany(Kunjungan::class, 'created_by');
     }
+
+    public function petugasPosyanduAktif()
+    {
+        return $this->hasMany(PetugasPosyandu::class, 'user_id')
+            ->where('status', true);
+    }
+
+    public function puskesmasUser()
+    {
+        return $this->hasMany(PuskesmasUser::class, 'user_id');
+    }
+
+    public function puskesmasUserAktif()
+    {
+        return $this->hasMany(PuskesmasUser::class, 'user_id')
+            ->where('status', true);
+    }
+
+    /**
+     * Memastikan user memiliki minimal satu penugasan aktif.
+     */
+    public function hasActiveAccess(): bool
+    {
+        $hasPuskesmas = $this->puskesmasUserAktif()
+            ->whereHas('puskesmas', function ($query) {
+                $query->where('status', true);
+            })
+            ->exists();
+
+        if ($hasPuskesmas) {
+            return true;
+        }
+
+        return $this->petugasPosyanduAktif()
+            ->whereHas('posyandu', function ($query) {
+                $query->where('status', true);
+            })
+            ->exists();
+    }
 }

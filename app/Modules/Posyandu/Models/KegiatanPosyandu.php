@@ -8,6 +8,14 @@ class KegiatanPosyandu extends PosyanduModel
 
     protected $table = 'kegiatan_posyandu';
 
+    protected $fillable = [
+        'posyandu_id',
+        'nama_kegiatan',
+        'tanggal_kegiatan',
+        'status',
+        'created_by',
+    ];
+
     protected function casts(): array
     {
         return [

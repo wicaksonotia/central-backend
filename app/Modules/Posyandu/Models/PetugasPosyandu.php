@@ -8,6 +8,13 @@ class PetugasPosyandu extends PosyanduModel
 
     protected $table = 'petugas_posyandu';
 
+    protected $fillable = [
+        'posyandu_id',
+        'user_id',
+        'peran',
+        'status',
+    ];
+
     protected function casts(): array
     {
         return [

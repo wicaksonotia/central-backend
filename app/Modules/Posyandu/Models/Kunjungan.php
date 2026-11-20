@@ -5,8 +5,17 @@ namespace App\Modules\Posyandu\Models;
 class Kunjungan extends PosyanduModel
 {
     protected $connection = 'posyandu';
-    
+
     protected $table = 'kunjungan';
+
+    protected $fillable = [
+        'kegiatan_id',
+        'warga_id',
+        'nomor_antrian',
+        'waktu_daftar',
+        'status',
+        'created_by',
+    ];
 
     protected function casts(): array
     {

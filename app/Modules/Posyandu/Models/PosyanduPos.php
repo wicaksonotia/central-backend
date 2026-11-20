@@ -8,6 +8,13 @@ class PosyanduPos extends PosyanduModel
 
     protected $table = 'posyandu_pos';
 
+    protected $fillable = [
+        'posyandu_id',
+        'pos_pemeriksaan_id',
+        'urutan',
+        'status',
+    ];
+
     protected function casts(): array
     {
         return [

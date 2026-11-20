@@ -16,8 +16,15 @@ class AuthService
     {
         $user = User::where('phone', $phone)->first();
 
+        if (!$user->hasActiveAccess()) {
+            throw ValidationException::withMessages([
+                'phone' => ['Akun Anda belum memiliki penugasan aktif.'],
+            ]);
+        }
+
         if (
             !$user ||
+            !$user->password ||
             !Hash::check($password, $user->password)
         ) {
             throw ValidationException::withMessages([
@@ -53,6 +60,12 @@ class AuthService
         $user = User::where('phone', $phone)
             ->where('is_active', true)
             ->first();
+
+        if (!$user->hasActiveAccess()) {
+            throw ValidationException::withMessages([
+                'phone' => 'Akun Anda belum memiliki penugasan aktif.',
+            ]);
+        }
 
         if (!$user) {
             throw ValidationException::withMessages([
@@ -109,6 +122,10 @@ class AuthService
                     ->where('is_active', true)
                     ->first();
 
+                if (!$user->hasActiveAccess()) {
+                    return ['status' => 'no_assignment'];
+                }
+
                 if (!$user) {
                     return ['status' => 'user_not_found'];
                 }
@@ -160,6 +177,7 @@ class AuthService
                 'expired' => 'OTP sudah kedaluwarsa. Silakan minta OTP baru.',
                 'max_attempts' => 'Batas percobaan OTP telah tercapai.',
                 'invalid' => 'Kode OTP yang dimasukkan salah.',
+                'no_assignment' => 'Akun Anda belum memiliki penugasan aktif.',
             ];
 
             throw ValidationException::withMessages([
@@ -187,15 +205,55 @@ class AuthService
     public function me(User $user): array
     {
         $user->load([
-            'petugasPosyandu.posyandu',
+            'puskesmasUserAktif.puskesmas.desaAktif',
+            'petugasPosyanduAktif.posyandu',
         ]);
+
+        $roles = collect();
+
+        foreach ($user->puskesmasUserAktif as $assignment) {
+            $roles->push($assignment->peran);
+        }
+
+        foreach ($user->petugasPosyanduAktif as $assignment) {
+            $roles->push($assignment->peran);
+        }
+
+        $roles = $roles->unique()->values();
 
         return [
             'id' => $user->id,
             'name' => $user->name,
             'phone' => $user->phone,
             'email' => $user->email,
-            'petugas_posyandu' => $user->petugasPosyandu,
+
+            // Role aktif yang dimiliki user.
+            'roles' => $roles,
+
+            // Diisi jika hanya ada satu jenis role aktif.
+            'role' => $roles->count() === 1
+                ? $roles->first()
+                : null,
+
+            'puskesmas' => $user->puskesmasUserAktif
+                ->map(fn($item) => [
+                    'id' => $item->puskesmas?->id,
+                    'nama' => $item->puskesmas?->nama_puskesmas,
+                    'peran' => $item->peran,
+                    'desa' => $item->puskesmas?->desaAktif
+                        ->map(fn($desa) => [
+                            'id' => $desa->id,
+                            'nama' => $desa->nama_desa,
+                        ])->values(),
+                ])->values(),
+
+            'petugas_posyandu' => $user->petugasPosyanduAktif
+                ->map(fn($item) => [
+                    'id' => $item->id,
+                    'posyandu_id' => $item->posyandu_id,
+                    'posyandu_nama' => $item->posyandu?->nama_posyandu,
+                    'peran' => $item->peran,
+                ])->values(),
         ];
     }
 

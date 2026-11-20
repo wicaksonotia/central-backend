@@ -8,6 +8,14 @@ class PosPemeriksaan extends PosyanduModel
 
     protected $table = 'pos_pemeriksaan';
 
+    protected $fillable = [
+        'kode',
+        'nama',
+        'keterangan',
+        'urutan',
+        'status',
+    ];
+
     protected function casts(): array
     {
         return [

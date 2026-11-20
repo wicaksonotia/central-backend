@@ -8,6 +8,8 @@ use Illuminate\Http\Request;
 use App\Modules\Pengaduan\Middleware\EnsurePengaduanAdmin;
 use App\Modules\Posyandu\Middleware\EnsurePosyanduAdmin;
 use App\Modules\Posyandu\Middleware\EnsurePosyanduUser;
+use App\Modules\Posyandu\Middleware\EnsurePuskesmasAdmin;
+use App\Modules\Posyandu\Middleware\EnsurePuskesmasUser;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -19,8 +21,12 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
             'pengaduan.admin' => EnsurePengaduanAdmin::class,
+
             'posyandu.user' => EnsurePosyanduUser::class,
             'posyandu.admin' => EnsurePosyanduAdmin::class,
+
+            'puskesmas.user' => EnsurePuskesmasUser::class,
+            'puskesmas.admin' => EnsurePuskesmasAdmin::class,
         ]);
 
         // $middleware->redirectGuests(

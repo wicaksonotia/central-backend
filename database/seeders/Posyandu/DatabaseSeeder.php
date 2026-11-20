@@ -17,6 +17,9 @@ class DatabaseSeeder extends Seeder
             PosyanduSeeder::class,
             AdminPosyanduSeeder::class,
             PetugasKaderSeeder::class,
+            PuskesmasSeeder::class,
+            PuskesmasDesaSeeder::class,
+            PuskesmasUserSeeder::class,
         ]);
     }
 }

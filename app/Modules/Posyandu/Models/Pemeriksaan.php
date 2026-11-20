@@ -5,8 +5,19 @@ namespace App\Modules\Posyandu\Models;
 class Pemeriksaan extends PosyanduModel
 {
     protected $connection = 'posyandu';
-    
+
     protected $table = 'pemeriksaan';
+
+    protected $fillable = [
+        'kunjungan_pos_id',
+        'jenis_pemeriksaan_id',
+        'pengukuran_ke',
+        'nilai_numerik',
+        'nilai_teks',
+        'keterangan',
+        'petugas_posyandu_id',
+        'waktu_pemeriksaan',
+    ];
 
     protected function casts(): array
     {

@@ -9,15 +9,36 @@ class DesaSeeder extends Seeder
 {
     public function run(): void
     {
-        Desa::updateOrCreate(
-            ['kode_desa' => 'kalibelo-gampengrejo'],
+        $desa = [
             [
+                'kode_desa' => 'kalibelo-gampengrejo',
                 'nama_desa' => 'Kalibelo',
-                'kecamatan' => 'Gampengrejo',
-                'kabupaten' => 'Kediri',
-                'provinsi' => 'Jawa Timur',
-                'status' => true,
-            ]
-        );
+            ],
+            [
+                'kode_desa' => 'kepuhrejo-gampengrejo',
+                'nama_desa' => 'Kepuhrejo',
+            ],
+            [
+                'kode_desa' => 'plosorejo-gampengrejo',
+                'nama_desa' => 'Plosorejo',
+            ],
+            [
+                'kode_desa' => 'wanengpaten-gampengrejo',
+                'nama_desa' => 'Wanengpaten',
+            ],
+        ];
+
+        foreach ($desa as $item) {
+            Desa::updateOrCreate(
+                ['kode_desa' => $item['kode_desa']],
+                [
+                    'nama_desa' => $item['nama_desa'],
+                    'kecamatan' => 'Gampengrejo',
+                    'kabupaten' => 'Kediri',
+                    'provinsi' => 'Jawa Timur',
+                    'status' => true,
+                ]
+            );
+        }
     }
 }

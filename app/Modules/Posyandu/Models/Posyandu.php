@@ -8,6 +8,16 @@ class Posyandu extends PosyanduModel
 
     protected $table = 'posyandu';
 
+    protected $fillable = [
+        'desa_id',
+        'kode_posyandu',
+        'nama_posyandu',
+        'alamat',
+        'nama_ketua',
+        'no_hp',
+        'status',
+    ];
+
     protected function casts(): array
     {
         return [
@@ -37,10 +47,7 @@ class Posyandu extends PosyanduModel
 
     public function posPemeriksaan()
     {
-        return $this->hasMany(
-            PosyanduPos::class,
-            'posyandu_id'
-        )
+        return $this->hasMany(PosyanduPos::class, 'posyandu_id')
             ->with('posPemeriksaan')
             ->orderBy('urutan');
     }

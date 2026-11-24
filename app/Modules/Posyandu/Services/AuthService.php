@@ -12,29 +12,39 @@ use Illuminate\Validation\ValidationException;
 
 class AuthService
 {
+    /**
+     * Login menggunakan nomor HP dan password.
+     */
     public function login(string $phone, string $password): array
     {
+        $phone = $this->normalizePhone($phone);
+
         $user = User::where('phone', $phone)->first();
 
-        if (!$user->hasActiveAccess()) {
+        if (!$user) {
             throw ValidationException::withMessages([
-                'phone' => ['Akun Anda belum memiliki penugasan aktif.'],
-            ]);
-        }
-
-        if (
-            !$user ||
-            !$user->password ||
-            !Hash::check($password, $user->password)
-        ) {
-            throw ValidationException::withMessages([
-                'phone' => ['Nomor HP atau password salah.'],
+                'phone' => 'Nomor HP atau password salah.',
             ]);
         }
 
         if (!$user->is_active) {
             throw ValidationException::withMessages([
-                'phone' => ['Akun Anda sedang tidak aktif.'],
+                'phone' => 'Akun Anda sedang tidak aktif.',
+            ]);
+        }
+
+        if (!$user->hasActiveAccess()) {
+            throw ValidationException::withMessages([
+                'phone' => 'Akun Anda belum memiliki penugasan aktif.',
+            ]);
+        }
+
+        if (
+            !$user->password ||
+            !Hash::check($password, $user->password)
+        ) {
+            throw ValidationException::withMessages([
+                'phone' => 'Nomor HP atau password salah.',
             ]);
         }
 
@@ -57,19 +67,17 @@ class AuthService
     {
         $phone = $this->normalizePhone($phone);
 
-        $user = User::where('phone', $phone)
-            ->where('is_active', true)
-            ->first();
+        $user = User::where('phone', $phone)->first();
+
+        if (!$user || !$user->is_active) {
+            throw ValidationException::withMessages([
+                'phone' => 'Nomor HP tidak terdaftar atau akun tidak aktif.',
+            ]);
+        }
 
         if (!$user->hasActiveAccess()) {
             throw ValidationException::withMessages([
                 'phone' => 'Akun Anda belum memiliki penugasan aktif.',
-            ]);
-        }
-
-        if (!$user) {
-            throw ValidationException::withMessages([
-                'phone' => 'Nomor HP tidak terdaftar atau akun tidak aktif.',
             ]);
         }
 
@@ -118,16 +126,14 @@ class AuthService
         $result = DB::connection('posyandu')->transaction(
             function () use ($phone, $otp) {
 
-                $user = User::where('phone', $phone)
-                    ->where('is_active', true)
-                    ->first();
+                $user = User::where('phone', $phone)->first();
+
+                if (!$user || !$user->is_active) {
+                    return ['status' => 'user_not_found'];
+                }
 
                 if (!$user->hasActiveAccess()) {
                     return ['status' => 'no_assignment'];
-                }
-
-                if (!$user) {
-                    return ['status' => 'user_not_found'];
                 }
 
                 $otpRecord = PhoneOtp::where('phone', $phone)
@@ -148,6 +154,7 @@ class AuthService
                     return ['status' => 'max_attempts'];
                 }
 
+                // Setiap percobaan verifikasi dihitung.
                 $otpRecord->increment('attempts');
 
                 if (!Hash::check($otp, $otpRecord->otp_hash)) {
@@ -173,15 +180,18 @@ class AuthService
         if ($result['status'] !== 'success') {
             $messages = [
                 'user_not_found' => 'Akun tidak ditemukan atau tidak aktif.',
+                'no_assignment' => 'Akun Anda belum memiliki penugasan aktif.',
                 'otp_not_found' => 'OTP tidak ditemukan. Silakan minta OTP baru.',
                 'expired' => 'OTP sudah kedaluwarsa. Silakan minta OTP baru.',
                 'max_attempts' => 'Batas percobaan OTP telah tercapai.',
                 'invalid' => 'Kode OTP yang dimasukkan salah.',
-                'no_assignment' => 'Akun Anda belum memiliki penugasan aktif.',
             ];
 
+            $message = $messages[$result['status']]
+                ?? 'Verifikasi OTP gagal. Silakan coba lagi.';
+
             throw ValidationException::withMessages([
-                'otp' => $messages[$result['status']],
+                'otp' => $message,
             ]);
         }
 
@@ -236,19 +246,19 @@ class AuthService
                 : null,
 
             'puskesmas' => $user->puskesmasUserAktif
-                ->map(fn($item) => [
+                ->map(fn ($item) => [
                     'id' => $item->puskesmas?->id,
                     'nama' => $item->puskesmas?->nama_puskesmas,
                     'peran' => $item->peran,
                     'desa' => $item->puskesmas?->desaAktif
-                        ->map(fn($desa) => [
+                        ->map(fn ($desa) => [
                             'id' => $desa->id,
                             'nama' => $desa->nama_desa,
                         ])->values(),
                 ])->values(),
 
             'petugas_posyandu' => $user->petugasPosyanduAktif
-                ->map(fn($item) => [
+                ->map(fn ($item) => [
                     'id' => $item->id,
                     'posyandu_id' => $item->posyandu_id,
                     'posyandu_nama' => $item->posyandu?->nama_posyandu,

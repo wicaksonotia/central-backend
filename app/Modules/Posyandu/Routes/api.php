@@ -2,6 +2,7 @@
 
 use App\Modules\Posyandu\Controllers\AuthController;
 use App\Modules\Posyandu\Controllers\AntrianController;
+use App\Modules\Posyandu\Controllers\KaderDashboardController;
 use App\Modules\Posyandu\Controllers\KunjunganController;
 use App\Modules\Posyandu\Controllers\PemeriksaanController;
 use App\Modules\Posyandu\Controllers\PosyanduPosController;
@@ -56,7 +57,6 @@ Route::prefix('v1/posyandu')->group(function () {
             // ---------------------------------------------
             // ADMIN POSYANDU
             // ---------------------------------------------
-
             Route::prefix('admin')
                 ->middleware('posyandu.admin')
                 ->group(function () {
@@ -74,6 +74,15 @@ Route::prefix('v1/posyandu')->group(function () {
                         Route::put('/pos', 'update');
                     });
                 });
+
+
+            // ---------------------------------------------
+            // KADER DASHBOARD
+            // ---------------------------------------------
+            Route::get(
+                '/kader/dashboard',
+                [KaderDashboardController::class, 'index']
+            );
 
             // ---------------------------------------------
             // KUNJUNGAN
